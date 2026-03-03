@@ -1,0 +1,181 @@
+---
+title: Orchestrator agent
+description: Coordinates specialist agents to create documentation through delegation and workflow management
+---
+
+The orchestrator agent is the top-level coordinator in Docbot's multi-agent system. It manages the documentation workflow by delegating tasks to specialist agents (research, planner, writer, and user interaction) and tracking overall session progress.
+
+## Purpose and responsibility
+
+The orchestrator:
+
+- Parses user requests into documentation targets
+- Delegates tasks to specialist agents based on the current phase
+- Tracks session state through the blackboard
+- Manages dependencies between documentation targets
+- Determines when the session is complete
+
+The orchestrator never sees raw file content—only summaries and IDs from the blackboard. It coordinates work without doing the work itself.
+
+## Agent creation
+
+```typescript orchestrator.ts
+export function createOrchestratorAgent(
+  blackboard: Blackboard,
+  context: OrchestratorContext,
+  tools: {
+    docTools: DocTools
+    codebaseTools: Partial<CodebaseTools>
+    interactionTools: InteractionTools
+  },
+)
+```
+
+### Context structure
+
+```typescript orchestrator.ts
+export interface OrchestratorContext {
+  docsPath: string
+  codebasePaths: string[]
+}
+```
+
+- `docsPath` - Path to the documentation directory
+- `codebasePaths` - Array of source code paths to analyze
+
+## Workflow
+
+For comprehensive documentation tasks:
+
+<Steps>
+  <Step title="Parse request">
+    Parse the user request into documentation targets using `create_doc_target`
+  </Step>
+  
+  <Step title="Research phase">
+    For each target, delegate research using `delegate_research` to gather findings
+  </Step>
+  
+  <Step title="Planning phase">
+    Delegate planning using `delegate_planning` to create documentation structure
+  </Step>
+  
+  <Step title="Approval (optional)">
+    Delegate user interaction using `delegate_user_interaction` if approval is needed
+  </Step>
+  
+  <Step title="Writing phase">
+    Delegate writing using `delegate_writing` to create documentation artifacts
+  </Step>
+  
+  <Step title="Complete">
+    Mark target complete using `mark_target_complete`, then call `finish_session` when all targets are done
+  </Step>
+</Steps>
+
+For simple requests (edits, fixes) in established sessions:
+
+- Use existing findings and plans when relevant
+- Go directly to writing if the scope is clear
+- Don't create new documentation targets for minor changes
+
+## Session awareness
+
+The orchestrator receives injected session state before each step:
+
+```typescript orchestrator.ts
+function formatSessionContext(summary: SessionSummary): string {
+  const lines = [
+    `phase: ${summary.currentPhase}`,
+    `findings: ${summary.totalFindings}`,
+    `plans: ${summary.totalPlans}`,
+    `artifacts: ${summary.totalArtifacts}`,
+  ]
+
+  if (summary.docTargets.length > 0) {
+    lines.push("targets:")
+    for (const t of summary.docTargets) {
+      lines.push(`  - ${t.name}: ${t.status}`)
+    }
+  }
+
+  return lines.join("\n")
+}
+```
+
+This context injection happens in the `prepareStep` hook, which adds warning signals based on state:
+
+- If plans exist → don't create new targets or re-research
+- If all targets are complete → call `finish_session` immediately
+
+## Tool sets
+
+The orchestrator has access to:
+
+### Session management tools
+
+- `create_doc_target` - Create a documentation target to track
+- `mark_target_complete` - Mark a specific target as complete
+- `finish_session` - End the documentation session
+- `check_session_status` - Get overall progress of all targets
+
+### Delegation tools
+
+- `delegate_research` - Send research task to research agent
+- `delegate_planning` - Send planning task to planner agent
+- `delegate_writing` - Send writing task to writer agent
+- `delegate_user_interaction` - Send interaction task to user agent
+
+### Blackboard access
+
+- `blackboard_read_summary` - Read session summary (read-only access)
+
+## Blackboard communication
+
+The orchestrator reads from and writes to the blackboard:
+
+```typescript orchestrator.ts
+// Read session summary
+const summary = blackboard.getSessionSummary()
+
+// Create documentation target
+const id = blackboard.addDocTarget({
+  name,
+  description,
+  status: "pending",
+  priority: priorityMap[targetPriority],
+})
+
+// Update target status during delegation
+blackboard.updateDocTargetStatus(docTargetId, "researching")
+blackboard.updateDocTargetStatus(docTargetId, "planning")
+blackboard.updateDocTargetStatus(docTargetId, "writing")
+blackboard.updateDocTargetStatus(docTargetId, "complete")
+```
+
+## Termination rules
+
+The orchestrator stops when:
+
+- All documentation targets reach status "complete" and `finish_session` is called
+- The step count reaches 30 (safety limit)
+- The `finish_session` tool is called
+
+```typescript orchestrator.ts
+stopWhen: [hasToolCall("finish_session"), stepCountIs(30)]
+```
+
+## Model configuration
+
+The orchestrator uses the planning model tier:
+
+```typescript orchestrator.ts
+const agent = new ToolLoopAgent({
+  model: config.models.planning,
+  maxRetries: runtime.maxRetries,
+  providerOptions: runtime.providerOptions,
+  // ...
+})
+```
+
+Configuration comes from `config.agents.runtime.orchestrator`.

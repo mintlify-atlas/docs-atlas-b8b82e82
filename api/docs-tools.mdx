@@ -1,0 +1,499 @@
+---
+title: Docs tools
+description: Tools for creating, reading, updating, and organizing documentation files
+---
+
+Docs tools enable agents to manipulate documentation files, manage navigation structure, and search existing documentation. These tools work with MDX files and the docs.json navigation configuration.
+
+## Overview
+
+All docs tools are created via `createDocTools()` which accepts:
+
+```typescript
+createDocTools(
+  docsPath: string,           // Path to docs directory
+  docIndex: DocIndex,         // Doc index for search
+  qdrantClient: QdrantClient  // Vector DB client
+)
+```
+
+## create_doc
+
+Create a new documentation file with frontmatter and sections. Automatically registers the page in docs.json navigation.
+
+### Parameters
+
+- `path` (required): Path for the new doc file relative to docs root
+- `title` (required): Title for the document
+- `description` (required): Brief description of the document
+- `sections` (required): Array of sections to include
+- `navGroup` (optional): Navigation group in docs.json to add this page to
+
+### Usage
+
+```typescript
+const result = await tools.create_doc.execute({
+  path: 'features/notifications.mdx',
+  title: 'Notifications',
+  description: 'Real-time notification system',
+  navGroup: 'Features',
+  sections: [
+    {
+      heading: 'Overview',
+      level: 2,
+      content: 'This feature provides...'
+    },
+    {
+      heading: 'Usage',
+      level: 2,
+      content: 'To use notifications...'
+    }
+  ]
+})
+```
+
+### Returns
+
+```typescript
+{
+  success: boolean
+  path: string
+  sectionCount: number
+  message: string
+  navigation: object
+}
+```
+
+## read_doc
+
+Read the contents of a documentation file or a specific section.
+
+### Parameters
+
+- `path` (required): Path to the doc file relative to docs root
+- `section` (optional): Section id or heading to read
+
+### Usage
+
+```typescript
+// Read entire document
+const result = await tools.read_doc.execute({
+  path: 'features/notifications.mdx'
+})
+
+// Read specific section
+const result = await tools.read_doc.execute({
+  path: 'features/notifications.mdx',
+  section: 'Overview'
+})
+```
+
+### Returns
+
+```typescript
+// Full document
+{
+  content: string
+  frontmatter: object
+  outline: Array<{ heading: string, level: number }>
+  path: string
+}
+
+// Specific section
+{
+  content: string
+  section: string
+  level: number
+  path: string
+}
+```
+
+## get_doc_outline
+
+Get the hierarchical outline of a documentation file.
+
+### Parameters
+
+- `path` (required): Path to the doc file relative to docs root
+
+### Usage
+
+```typescript
+const result = await tools.get_doc_outline.execute({
+  path: 'features/notifications.mdx'
+})
+```
+
+### Returns
+
+```typescript
+{
+  outline: Array<{
+    heading: string
+    level: number
+    children?: Array<...>
+  }>
+  frontmatter: object
+  sectionCount: number
+  path: string
+}
+```
+
+## update_section
+
+Update the content of a specific section in a documentation file.
+
+### Parameters
+
+- `path` (required): Path to the doc file relative to docs root
+- `section` (required): Section id or heading to update
+- `content` (required): New content for the section
+
+### Usage
+
+```typescript
+const result = await tools.update_section.execute({
+  path: 'features/notifications.mdx',
+  section: 'Overview',
+  content: 'Updated content for the overview section...'
+})
+```
+
+## add_section
+
+Add a new section to an existing documentation file.
+
+### Parameters
+
+- `path` (required): Path to the doc file relative to docs root
+- `heading` (required): Heading for the new section
+- `content` (required): Content for the new section
+- `level` (optional, default: 2): Heading level (1-6)
+- `afterSection` (optional): Insert after this section (id or heading). If omitted, appends to end
+
+### Usage
+
+```typescript
+const result = await tools.add_section.execute({
+  path: 'features/notifications.mdx',
+  heading: 'Best practices',
+  level: 2,
+  content: 'Follow these best practices...',
+  afterSection: 'Usage'
+})
+```
+
+## delete_section
+
+Delete a section from a documentation file.
+
+### Parameters
+
+- `path` (required): Path to the doc file relative to docs root
+- `section` (required): Section id or heading to delete
+
+### Usage
+
+```typescript
+const result = await tools.delete_section.execute({
+  path: 'features/notifications.mdx',
+  section: 'Deprecated features'
+})
+```
+
+## delete_doc
+
+Delete an entire documentation file. Use with caution.
+
+### Parameters
+
+- `path` (required): Path to the doc file relative to docs root
+- `confirm` (required): Must be true to confirm deletion
+
+### Usage
+
+```typescript
+const result = await tools.delete_doc.execute({
+  path: 'old-feature.mdx',
+  confirm: true
+})
+```
+
+## move_section
+
+Move a section to a different position within the same document.
+
+### Parameters
+
+- `path` (required): Path to the doc file relative to docs root
+- `section` (required): Section id or heading to move
+- `afterSection` (required): Move after this section (null = move to beginning)
+
+### Usage
+
+```typescript
+const result = await tools.move_section.execute({
+  path: 'features/notifications.mdx',
+  section: 'Advanced usage',
+  afterSection: 'Basic usage'
+})
+```
+
+## move_content
+
+Move content from one document to another.
+
+### Parameters
+
+- `sourcePath` (required): Source doc path relative to docs root
+- `sourceSection` (required): Section to move from source
+- `targetPath` (required): Target doc path relative to docs root
+- `afterSection` (optional): Insert after this section in target (omit to append)
+
+### Usage
+
+```typescript
+const result = await tools.move_content.execute({
+  sourcePath: 'old-guide.mdx',
+  sourceSection: 'Installation',
+  targetPath: 'getting-started.mdx',
+  afterSection: 'Prerequisites'
+})
+```
+
+## rename_doc
+
+Rename or move a documentation file to a new path.
+
+### Parameters
+
+- `oldPath` (required): Current path relative to docs root
+- `newPath` (required): New path relative to docs root
+
+### Usage
+
+```typescript
+const result = await tools.rename_doc.execute({
+  oldPath: 'old-name.mdx',
+  newPath: 'features/new-name.mdx'
+})
+```
+
+## consolidate_docs
+
+Consolidate multiple related documentation files into one, preserving all content.
+
+### Parameters
+
+- `sourcePaths` (required): Array of paths to consolidate (minimum 2)
+- `targetPath` (required): Path for the consolidated doc
+- `title` (required): Title for the consolidated doc
+- `description` (required): Description for the consolidated doc
+
+### Usage
+
+```typescript
+const result = await tools.consolidate_docs.execute({
+  sourcePaths: ['guide-part-1.mdx', 'guide-part-2.mdx', 'guide-part-3.mdx'],
+  targetPath: 'complete-guide.mdx',
+  title: 'Complete Guide',
+  description: 'Comprehensive guide covering all aspects'
+})
+```
+
+Note: Original files are NOT deleted automatically - review and delete manually if satisfied.
+
+## search_docs
+
+Search documentation using semantic search (for concepts) or text search (for exact terms).
+
+### Parameters
+
+- `query` (required): The search query
+- `type` (optional, default: 'hybrid'): Search type - 'semantic', 'exact', or 'hybrid'
+- `limit` (optional, default: 5): Maximum results to return
+
+### Usage
+
+```typescript
+const results = await tools.search_docs.execute({
+  query: 'authentication flow',
+  type: 'hybrid',
+  limit: 10
+})
+```
+
+## analyze_doc
+
+Analyze a documentation file for quality issues, structure problems, and potential improvements.
+
+### Parameters
+
+- `path` (required): Path to the doc file relative to docs root
+
+### Usage
+
+```typescript
+const result = await tools.analyze_doc.execute({
+  path: 'features/notifications.mdx'
+})
+```
+
+### Returns
+
+```typescript
+{
+  path: string
+  frontmatter: object
+  sectionCount: number
+  wordCount: number
+  quality: 'good' | 'fair' | 'needs-improvement'
+  issues: string[]
+  suggestions: string[]
+}
+```
+
+## check_coverage
+
+Check if a topic or feature is covered in the documentation.
+
+### Parameters
+
+- `topic` (required): The topic or feature to check coverage for
+
+### Usage
+
+```typescript
+const result = await tools.check_coverage.execute({
+  topic: 'real-time notifications'
+})
+```
+
+### Returns
+
+```typescript
+{
+  topic: string
+  coverage: 'comprehensive' | 'partial' | 'minimal' | 'none'
+  relatedDocs: Array<{
+    path: string
+    score: number
+    excerpt: string
+  }>
+  suggestion: string | null
+}
+```
+
+## Navigation tools
+
+### read_nav
+
+Read and analyze the docs.json navigation structure.
+
+#### Parameters
+
+- `includeAllFields` (optional, default: false): Include all docs.json fields (theme, colors, logo, etc.)
+
+#### Usage
+
+```typescript
+const result = await tools.read_nav.execute({
+  includeAllFields: false
+})
+```
+
+#### Returns
+
+```typescript
+{
+  structure: string  // 'groups', 'tabs', 'dropdowns', or 'anchors'
+  groups: string[]
+  pages: Array<{ page: string, groups: string[] }>
+  stats: {
+    totalPages: number
+    totalGroups: number
+    maxDepth: number
+  }
+  rawNavigation: object
+}
+```
+
+### register_nav
+
+Register a new documentation page in the docs.json navigation config.
+
+#### Parameters
+
+- `docPath` (required): Path to the new doc file relative to docs root
+- `title` (required): Title to display in navigation
+- `group` (optional): Navigation group to add to (e.g. 'Getting Started', 'Features')
+- `position` (optional, default: 'end'): Where to add within the group ('start' or 'end')
+
+#### Usage
+
+```typescript
+const result = await tools.register_nav.execute({
+  docPath: 'features/notifications.mdx',
+  title: 'Notifications',
+  group: 'Features',
+  position: 'end'
+})
+```
+
+### update_nav
+
+Update the docs.json navigation structure. Supports adding/removing pages, creating/modifying groups, and moving pages between groups.
+
+#### Parameters
+
+- `action` (required): The navigation update action - 'add_page', 'remove_page', 'move_page', 'add_group', 'remove_group', 'update_group', or 'replace_all'
+- Additional parameters depend on the action selected
+
+#### Usage examples
+
+```typescript
+// Add a page to a group
+await tools.update_nav.execute({
+  action: 'add_page',
+  page: 'features/new-feature.mdx',
+  group: 'Features',
+  position: 0  // 0-indexed position
+})
+
+// Move a page between groups
+await tools.update_nav.execute({
+  action: 'move_page',
+  page: 'guide.mdx',
+  fromGroup: 'Old Group',
+  toGroup: 'New Group'
+})
+
+// Add a new group
+await tools.update_nav.execute({
+  action: 'add_group',
+  newGroup: {
+    group: 'Advanced',
+    icon: 'rocket',
+    pages: ['advanced/topic-1.mdx', 'advanced/topic-2.mdx']
+  },
+  afterGroup: 'Getting Started'
+})
+```
+
+### search_mintlify
+
+Search Mintlify documentation for features, components, examples, and API references.
+
+#### Parameters
+
+- `query` (required): Search query to find Mintlify features, components, examples, or API references
+
+#### Usage
+
+```typescript
+const result = await tools.search_mintlify.execute({
+  query: 'code blocks with syntax highlighting'
+})
+```
+
+Use this to discover Mintlify capabilities like custom components, MDX features, tabs, accordions, code blocks, cards, callouts, and more.

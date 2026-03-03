@@ -1,0 +1,259 @@
+---
+title: Codebase tools
+description: Tools for analyzing and searching the source code repository
+---
+
+Codebase tools enable agents to explore, search, and analyze source code. These tools provide both text-based and semantic search capabilities, component discovery, route mapping, and feature status checking.
+
+## Overview
+
+All codebase tools are created via `createCodebaseTools()` which accepts:
+
+```typescript
+createCodebaseTools(
+  codebasePaths: string[],  // Array of paths to search across
+  codeIndex: CodeIndex      // Code index for semantic search
+)
+```
+
+## code_search
+
+Search the codebase for exact code patterns using ripgrep (text/regex search).
+
+### Parameters
+
+- `query` (required): Exact text or regex pattern to search for. Use identifiers, type names, function names, or simple regex
+- `fileType` (optional): File extension without dot to filter results (e.g. 'ts', 'tsx', 'js', 'prisma')
+- `maxResults` (optional, default: 10): Maximum number of results to return
+
+### Usage
+
+```typescript
+const results = await tools.code_search.execute({
+  query: 'ActivityEntry',
+  fileType: 'ts',
+  maxResults: 20
+})
+```
+
+### Best practices
+
+- Use exact identifiers, type names, function names (e.g. 'ActivityEntry', 'parentId')
+- Use simple regex for variations (e.g. 'Comment.*Thread', 'function.*create')
+- Avoid semantic queries (e.g. 'activity history model')
+- For conceptual queries, use `semantic_code_search` instead
+
+### Returns
+
+```typescript
+{
+  matches: Array<{
+    path: string
+    line: number
+    content: string
+  }>
+  total: number
+}
+```
+
+## semantic_code_search
+
+Semantic search over the codebase for conceptual queries using vector embeddings.
+
+### Parameters
+
+- `query` (required): Natural language query about code (e.g. 'where do we handle authentication')
+- `type` (optional, default: 'hybrid'): Search mode - 'semantic' (vector only) or 'hybrid' (vector + rerank)
+- `limit` (optional, default: 5): Maximum results to return
+- `language` (optional): Language filter (e.g. 'typescript', 'python')
+
+### Usage
+
+```typescript
+const results = await tools.semantic_code_search.execute({
+  query: 'error handling middleware',
+  type: 'hybrid',
+  limit: 10
+})
+```
+
+### Returns
+
+Array of search results with semantic similarity scores and code snippets.
+
+## read_file
+
+Read the contents of a code file, optionally with line range selection.
+
+### Parameters
+
+- `filePath` (required): Path to file (absolute or relative to codebase paths)
+- `lineStart` (optional): Starting line number (1-indexed)
+- `lineEnd` (optional): Ending line number (1-indexed, inclusive)
+
+### Usage
+
+```typescript
+// Read entire file
+const result = await tools.read_file.execute({
+  filePath: 'packages/db/schema.prisma'
+})
+
+// Read specific lines
+const result = await tools.read_file.execute({
+  filePath: 'packages/db/schema.prisma',
+  lineStart: 1,
+  lineEnd: 50
+})
+```
+
+### Returns
+
+```typescript
+{
+  content: string
+  filePath: string
+  absolutePath: string
+  lineStart: number
+  lineEnd: number
+  totalLines: number
+  found: boolean
+}
+```
+
+## list_directory
+
+List the contents of a directory with optional recursive traversal.
+
+### Parameters
+
+- `directoryPath` (required): Path to directory (absolute or relative to codebase paths)
+- `recursive` (optional, default: false): If true, recursively list all subdirectories
+
+### Usage
+
+```typescript
+const result = await tools.list_directory.execute({
+  directoryPath: 'packages/db',
+  recursive: true
+})
+```
+
+### Returns
+
+```typescript
+{
+  items: Array<{
+    name: string
+    path: string
+    type: 'file' | 'directory'
+    isFile: boolean
+    isDirectory: boolean
+  }>
+  count: number
+  directoryPath: string
+  absolutePath: string
+  found: boolean
+}
+```
+
+## find_components
+
+Find React components in the codebase matching a name pattern.
+
+### Parameters
+
+- `namePattern` (optional): Regex pattern to match component names (e.g. 'Button', '.*Form')
+- `directory` (optional): Subdirectory to search within (e.g. 'components', 'features')
+
+### Usage
+
+```typescript
+const result = await tools.find_components.execute({
+  namePattern: '.*Button',
+  directory: 'components'
+})
+```
+
+### Returns
+
+```typescript
+{
+  components: Array<{
+    name: string
+    path: string
+    type: 'function' | 'arrow'
+  }>
+  total: number
+}
+```
+
+Searches for both function components (`export function Component`) and arrow function components (`export const Component =`).
+
+## get_routes
+
+Find all page routes in a Next.js or similar app router structure.
+
+### Parameters
+
+- `appDirectory` (optional, default: 'app'): The app directory to scan
+- `includeApi` (optional, default: true): Whether to include API routes
+
+### Usage
+
+```typescript
+const result = await tools.get_routes.execute({
+  appDirectory: 'app',
+  includeApi: true
+})
+```
+
+### Returns
+
+```typescript
+{
+  routes: Array<{
+    path: string
+    type: 'page' | 'api' | 'layout' | 'loading' | 'error'
+    filePath: string
+  }>
+  pages: number
+  apiRoutes: number
+  total: number
+}
+```
+
+## feature_status
+
+Check the status of a feature in the codebase including implementation status, feature flags, and test coverage.
+
+### Parameters
+
+- `featureName` (required): Name of the feature to check
+
+### Usage
+
+```typescript
+const result = await tools.feature_status.execute({
+  featureName: 'notifications'
+})
+```
+
+### Returns
+
+```typescript
+{
+  featureName: string
+  implemented: boolean
+  featureFlagged: boolean
+  flagName: string | null
+  testCoverage: boolean
+  references: Array<{
+    path: string
+    context: string
+  }>
+  summary: string
+}
+```
+
+Searches for feature references, checks for feature flags, and identifies test coverage by looking for test files.

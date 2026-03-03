@@ -1,0 +1,236 @@
+---
+title: Writer agent
+description: Executes documentation plans by writing quality user-facing content
+---
+
+The writer agent executes documentation plans from the blackboard by writing quality, user-facing content. It reads findings, creates or updates documentation files, and records artifacts back to the blackboard.
+
+## Purpose and responsibility
+
+The writer agent:
+
+- Reads plans and findings from the blackboard
+- Writes content for non-technical end users
+- Creates or updates documentation files
+- Uses Mintlify components to structure information
+- Records artifacts to the blackboard
+- Suggests media placements where visuals would help
+
+The writer focuses on what users can do with the product, not how it's built internally.
+
+## Agent creation
+
+```typescript writer.ts
+export function createWriterAgent(
+  _blackboard: Blackboard,
+  tools: WriterAgentTools,
+)
+```
+
+### Tool requirements
+
+```typescript writer.ts
+export type WriterAgentTools = DocTools &
+  Partial<InteractionTools> &
+  Pick<
+    BlackboardTools,
+    | "blackboard_read_finding"
+    | "blackboard_read_plan"
+    | "blackboard_write_artifact"
+    | "mark_writing_complete"
+  >
+```
+
+The writer has access to:
+
+- **DocTools** - Create, read, and update documentation files
+- **InteractionTools** (partial) - Suggest media placements
+- **Blackboard read tools** - Read findings and plans
+- **Blackboard write tools** - Write artifacts and mark writing complete
+
+## Workflow
+
+<Steps>
+  <Step title="Read the plan">
+    Use `blackboard_read_plan` to get the documentation plan from the blackboard
+  </Step>
+  
+  <Step title="For each section">
+    Process each section in the plan:
+    
+    - Read relevant findings with `blackboard_read_finding`
+    - Read actual files using `read_file` or `read_doc`
+    - Write well-structured content
+    - Create or update files using `create_doc` or `update_doc`
+    - Record artifacts with `blackboard_write_artifact`
+  </Step>
+  
+  <Step title="Complete">
+    Immediately call `mark_writing_complete` when all sections are written
+  </Step>
+</Steps>
+
+## Audience
+
+All content is written for non-technical end users.
+
+### Write about
+
+- What the feature does (user value)
+- How to use it (workflows, steps)
+- What to expect (outcomes)
+
+### Never write about
+
+- Function names, component names, hooks
+- Internal APIs, route handlers
+- Code structure or implementation details
+
+## Content structure
+
+Content should be written for scanning, not reading cover-to-cover.
+
+For each section:
+
+- Lead with a 1-2 sentence summary for larger sections (only when necessary)
+- Use Mintlify components to organize complex information
+- Follow explanations with concrete examples or steps
+
+### Structural patterns
+
+- Overview paragraph → `<Steps>` for procedures
+- Brief intro → `<Tabs>` for variations by role, platform, or use case
+- Definition → `<Accordion>` for edge cases or advanced details
+- Navigation hub → `<CardGroup>` linking to subpages
+
+### Avoid
+
+- Multiple consecutive paragraphs explaining the same concept
+- Walls of text without visual structure
+- Technical jargon or code references
+- Marketing speak: "sophisticated", "powerful", "seamlessly", "robust", "comprehensive"
+- Buzzwords: "leverage", "utilize", "streamline", "enhance"
+- Filler phrases: "it's important to note that", "as mentioned above"
+- Over-explanation: if a heading says what it is, don't repeat it in the first sentence
+
+## Mintlify components
+
+Use components to structure information, not decorate it.
+
+### Available components
+
+- `<Steps>` - Actual multi-step procedures with clear sequence
+- `<Tabs>` - Same content genuinely differs by context (role, platform, version)
+- `<Accordion>` - Optional or advanced content users may skip
+- `<AccordionGroup>` - Related accordions that belong together
+- `<CardGroup>` - Navigation to related pages or sections
+- `<Info>`, `<Warning>`, `<Tip>` - Genuinely important callouts
+
+### Component rules
+
+- One component type per logical section (don't nest Tabs in Accordions)
+- Default to prose for explanations
+- A page with zero components can be better than one stuffed with them
+
+## Bullet points
+
+Bullet points are appropriate for:
+
+- Feature lists (short items)
+- Quick reference (options, settings)
+- Choices or alternatives
+
+Not appropriate for:
+
+- Primary content structure (use prose or Steps)
+- Explaining concepts (use paragraphs)
+- Anything that needs order (use Steps)
+
+## Tone
+
+Maintain a helpful, precise, and calm tone:
+
+- Helpful, not salesy
+- Precise, not vague
+- Calm, not enthusiastic
+- Accessible always—no jargon
+- Lowercase for comments and error messages
+
+## Media suggestions
+
+When a place would benefit from an image, screenshot, diagram, or video, use the `suggest_media` tool:
+
+```typescript
+await tools.suggest_media({
+  location: "/docs/features/dashboard.mdx",
+  type: "screenshot",
+  description: "Dashboard overview showing main navigation and metrics",
+  priority: "high"
+})
+```
+
+This creates a to-do list for the user. The writer cannot create media itself.
+
+## Blackboard communication
+
+The writer reads from and writes to the blackboard:
+
+```typescript
+// Read the plan
+const plan = await tools.blackboard_read_plan({ planId })
+
+// Read a specific finding
+const finding = await tools.blackboard_read_finding({ findingId })
+
+// Write an artifact after creating a file
+await tools.blackboard_write_artifact({
+  planId,
+  sectionId: "section-1",
+  filePath: "/docs/features/overview.mdx",
+  operation: "create",
+  status: "complete"
+})
+
+// Mark writing complete when done
+await tools.mark_writing_complete()
+```
+
+## Error handling
+
+If an operation fails, the writer reports the error but continues with other operations. This ensures partial progress even when some files can't be written.
+
+## Termination rules
+
+The writer stops when:
+
+- `mark_writing_complete` is called (expected termination)
+- The step count reaches 20 (safety limit)
+
+```typescript writer.ts
+stopWhen: [
+  hasToolCall("mark_writing_complete"),
+  stepCountIs(20),
+]
+```
+
+<Warning>
+After writing or updating all files in the plan, the writer must immediately call `mark_writing_complete`. It should not re-read files to verify, make "polish" passes, or iterate on content.
+</Warning>
+
+Write once, then mark complete.
+
+## Model configuration
+
+The writer uses the prose model tier for quality writing:
+
+```typescript writer.ts
+const agent = new ToolLoopAgent({
+  instructions: WRITER_SYSTEM_PROMPT,
+  model: config.models.prose,
+  maxRetries: runtime.maxRetries,
+  providerOptions: runtime.providerOptions,
+  // ...
+})
+```
+
+Configuration comes from `config.agents.runtime.writer`.

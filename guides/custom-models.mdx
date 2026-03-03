@@ -1,0 +1,273 @@
+---
+title: Configure custom AI models
+description: Learn how to customize the AI models used by Docbot for different tasks
+---
+
+Docbot uses different AI models for various tasks like planning, writing, and embedding. This guide shows you how to configure custom models to optimize for cost, speed, or quality.
+
+## Default models
+
+Docbot ships with these default model configurations:
+
+```jsonc
+{
+  "models": {
+    "planning": "openai/gpt-5.2",
+    "planningHeavy": "anthropic/claude-opus-4.5",
+    "prose": "anthropic/claude-sonnet-4.5",
+    "fast": "openai/gpt-5.2",
+    "nano": "google/gemini-3-flash",
+    "context": "google/gemini-3-pro-preview",
+    "embedding": "openai/text-embedding-3-small",
+    "embeddingLarge": "openai/text-embedding-3-large"
+  }
+}
+```
+
+<Note>
+All models are accessed through Vercel AI Gateway, which requires an `AI_GATEWAY_API_KEY` environment variable.
+</Note>
+
+## Model types and their roles
+
+### Planning models
+
+**`planning`** - Used for general task planning and strategy
+- Default: `openai/gpt-5.2`
+- Purpose: Analyzing documentation needs and creating structured plans
+- Characteristics: Balanced speed and reasoning ability
+
+**`planningHeavy`** - Used for complex, multi-step planning
+- Default: `anthropic/claude-opus-4.5`
+- Purpose: Deep analysis and sophisticated planning tasks
+- Characteristics: Highest quality reasoning, slower and more expensive
+
+### Writing models
+
+**`prose`** - Used for writing and editing documentation
+- Default: `anthropic/claude-sonnet-4.5`
+- Purpose: Generating high-quality documentation prose
+- Characteristics: Excellent writing quality, context awareness
+
+### Utility models
+
+**`fast`** - Used for quick, simple tasks
+- Default: `openai/gpt-5.2`
+- Purpose: Fast responses for straightforward operations
+- Characteristics: Low latency, cost-effective
+
+**`nano`** - Used for very simple, high-volume tasks
+- Default: `google/gemini-3-flash`
+- Purpose: Minimal processing tasks
+- Characteristics: Fastest, cheapest option
+
+**`context`** - Used for large context window needs
+- Default: `google/gemini-3-pro-preview`
+- Purpose: Processing large documents or codebases
+- Characteristics: Extended context length
+
+### Embedding models
+
+**`embedding`** - Default embedding model for indexing
+- Default: `openai/text-embedding-3-small`
+- Vector size: 1536 dimensions
+- Purpose: General-purpose semantic search
+
+**`embeddingLarge`** - High-quality embeddings
+- Default: `openai/text-embedding-3-large`
+- Purpose: When higher accuracy is needed
+- Characteristics: Better quality, more expensive
+
+## Customizing models
+
+<Steps>
+
+<Step title="Edit your configuration file">
+
+Open `docbot.config.jsonc` and add or modify the `models` section:
+
+```jsonc
+{
+  "projectSlug": "my-project",
+  "models": {
+    "planning": "openai/gpt-5.2",
+    "prose": "anthropic/claude-sonnet-4.5",
+    "fast": "anthropic/claude-haiku-4.5",
+    "embedding": "openai/text-embedding-3-small"
+  }
+}
+```
+
+</Step>
+
+<Step title="Use the correct format">
+
+Model identifiers must follow the format:
+
+```
+provider/model-name
+```
+
+Examples:
+- `openai/gpt-5.2`
+- `anthropic/claude-sonnet-4.5`
+- `google/gemini-3-flash`
+- `cohere/command-r-plus`
+
+<Warning>
+The model ID must match the regex pattern `^[\w-]+/[\w.-]+$`. Invalid formats will cause validation errors.
+</Warning>
+
+</Step>
+
+<Step title="Validate your configuration">
+
+Docbot validates your configuration on startup. Test it by running:
+
+```bash
+bunx @helmlabs/docbot --help
+```
+
+If there are validation errors, you'll see a message indicating which model ID is invalid.
+
+</Step>
+
+</Steps>
+
+## Model selection strategies
+
+### Cost optimization
+
+To minimize costs, use smaller/faster models:
+
+```jsonc
+{
+  "models": {
+    "planning": "anthropic/claude-haiku-4.5",
+    "planningHeavy": "anthropic/claude-sonnet-4.5",
+    "prose": "anthropic/claude-haiku-4.5",
+    "fast": "google/gemini-3-flash",
+    "embedding": "openai/text-embedding-3-small"
+  }
+}
+```
+
+### Quality optimization
+
+For best output quality, use premium models:
+
+```jsonc
+{
+  "models": {
+    "planning": "anthropic/claude-opus-4.5",
+    "planningHeavy": "anthropic/claude-opus-4.5",
+    "prose": "anthropic/claude-opus-4.5",
+    "fast": "openai/gpt-5.2",
+    "embedding": "openai/text-embedding-3-large"
+  }
+}
+```
+
+### Balanced approach
+
+Use premium models only where they matter most:
+
+```jsonc
+{
+  "models": {
+    "planning": "openai/gpt-5.2",
+    "planningHeavy": "anthropic/claude-opus-4.5",
+    "prose": "anthropic/claude-sonnet-4.5",
+    "fast": "anthropic/claude-haiku-4.5",
+    "nano": "google/gemini-3-flash",
+    "embedding": "openai/text-embedding-3-small"
+  }
+}
+```
+
+## Provider-specific notes
+
+### OpenAI models
+
+Supported models:
+- GPT-5.2 (latest)
+- GPT-4.5 series
+- Embedding models (text-embedding-3-small, text-embedding-3-large)
+
+### Anthropic models
+
+Claude model tiers:
+- **Opus**: Highest intelligence, most expensive
+- **Sonnet**: Balanced performance and cost
+- **Haiku**: Fastest, most cost-effective
+
+### Google models
+
+Gemini variants:
+- **Pro**: Large context windows
+- **Flash**: Optimized for speed
+
+### Cohere models
+
+Docbot also supports Cohere for:
+- Reranking: `cohere/rerank-v3.5`
+- Generation models as needed
+
+<Tip>
+The reranker model is used internally for hybrid search and doesn't need to be configured unless you're using advanced features.
+</Tip>
+
+## Embedding model considerations
+
+### Vector dimensions
+
+The default Qdrant configuration expects 1536-dimensional vectors. If you change embedding models, ensure:
+
+1. The new model uses 1536 dimensions, or
+2. You rebuild your Qdrant collections with the correct vector size
+
+### Changing embedding models
+
+If you switch embedding models after indexing:
+
+```bash
+# Clear existing index
+rm -rf .docbot/qdrant_storage
+
+# Restart Qdrant
+docker restart docbot-qdrant
+
+# Re-index with new model
+bunx @helmlabs/docbot index --force
+```
+
+<Warning>
+Changing embedding models requires a full re-index. Vectors from different models are not compatible.
+</Warning>
+
+## Future provider support
+
+Docbot currently requires Vercel AI Gateway via `AI_GATEWAY_API_KEY`. Support for additional providers is planned:
+
+- Direct API access (OpenAI, Anthropic, etc.)
+- Azure OpenAI
+- Custom/self-hosted models
+- Local models via Ollama
+
+## Validating model configuration
+
+The configuration schema enforces:
+
+```typescript
+const modelIdSchema = z.string().regex(/^[\w-]+\/[\w.-]+$/, {
+  message: "model id must be in format 'provider/model-name'",
+})
+```
+
+All model fields are optional. If not specified, defaults are used.
+
+## Next steps
+
+- Learn about [local development setup](/guides/local-setup)
+- Understand [Qdrant configuration](/guides/docker-qdrant)
+- Review [troubleshooting tips](/guides/troubleshooting) for model-related issues

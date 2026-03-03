@@ -1,0 +1,537 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for Docbot setup and usage
+---
+
+This guide covers common issues you might encounter when using Docbot and how to resolve them.
+
+## Installation issues
+
+### Bun not found
+
+**Error:**
+```
+command not found: bun
+```
+
+**Solution:**
+
+Install Bun from [bun.sh](https://bun.sh):
+
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
+
+Verify installation:
+
+```bash
+bun --version
+```
+
+### Missing ripgrep
+
+**Error:**
+```
+ripgrep (rg) not found in PATH
+```
+
+**Solution:**
+
+Install ripgrep:
+
+- **macOS**: `brew install ripgrep`
+- **Ubuntu/Debian**: `apt-get install ripgrep`
+- **Fedora**: `dnf install ripgrep`
+- **Windows**: `choco install ripgrep`
+
+Verify installation:
+
+```bash
+rg --version
+```
+
+## Configuration issues
+
+### Config file already exists
+
+**Error:**
+```
+error: docbot.config.jsonc already exists
+use --force to overwrite
+```
+
+**Solution:**
+
+Either use the force flag:
+
+```bash
+docbot init --force
+```
+
+Or manually remove the existing config:
+
+```bash
+rm docbot.config.jsonc
+docbot init
+```
+
+### Invalid model ID format
+
+**Error:**
+```
+model id must be in format 'provider/model-name'
+```
+
+**Solution:**
+
+Ensure all model IDs in `docbot.config.jsonc` follow the format `provider/model-name`:
+
+```jsonc
+{
+  "models": {
+    "planning": "openai/gpt-5.2",  // ✓ Correct
+    "prose": "claude-sonnet-4.5"    // ✗ Wrong - missing provider
+  }
+}
+```
+
+Correct format:
+
+```jsonc
+{
+  "models": {
+    "planning": "openai/gpt-5.2",
+    "prose": "anthropic/claude-sonnet-4.5"
+  }
+}
+```
+
+### Cannot find package.json
+
+**Error:**
+```
+error: could not find package.json in current directory or any parent
+please run this command from within a project directory
+```
+
+**Solution:**
+
+Run `docbot init` from a directory that contains a `package.json` file, or create one:
+
+```bash
+bun init -y
+docbot init
+```
+
+## Docker and Qdrant issues
+
+### Docker not installed
+
+**Error:**
+```
+warning: docker is not installed or not in PATH
+```
+
+**Solution:**
+
+Install Docker Desktop:
+- **macOS/Windows**: [Docker Desktop](https://www.docker.com/products/docker-desktop)
+- **Linux**: Follow the [official installation guide](https://docs.docker.com/engine/install/)
+
+Verify installation:
+
+```bash
+docker --version
+```
+
+<Tip>
+If you prefer not to use Docker, you can skip Docker setup with `docbot init --skip-docker` and use a remote Qdrant instance.
+</Tip>
+
+### Qdrant container fails to start
+
+**Error:**
+```
+error: failed to start qdrant container
+```
+
+**Solution:**
+
+1. Check if port 6333 is already in use:
+
+```bash
+lsof -i :6333
+```
+
+2. If another process is using it, either stop that process or use a different port in your config.
+
+3. Try starting manually:
+
+```bash
+docker run -d --name docbot-qdrant -p 6333:6333 \
+  -v "$(pwd)/.docbot/qdrant_storage:/qdrant/storage" qdrant/qdrant
+```
+
+4. Check Docker logs:
+
+```bash
+docker logs docbot-qdrant
+```
+
+### Qdrant not accessible
+
+**Error:**
+```
+warning: qdrant may still be starting up
+```
+
+**Solution:**
+
+1. Wait 10-15 seconds for Qdrant to fully start, then test:
+
+```bash
+curl http://127.0.0.1:6333/health
+```
+
+2. If still not accessible, check container status:
+
+```bash
+docker ps -a | grep qdrant
+```
+
+3. Restart the container:
+
+```bash
+docker restart docbot-qdrant
+```
+
+### Connection refused when accessing Qdrant
+
+**Error:**
+```
+Error: connect ECONNREFUSED 127.0.0.1:6333
+```
+
+**Solution:**
+
+1. Verify Qdrant is running:
+
+```bash
+docker ps --filter name=docbot-qdrant
+```
+
+2. If not running, start it:
+
+```bash
+docker start docbot-qdrant
+```
+
+3. Check the URL in your config matches:
+
+```jsonc
+{
+  "qdrant": {
+    "url": "http://127.0.0.1:6333"  // Must match container port
+  }
+}
+```
+
+### Collection already exists error
+
+**Error:**
+```
+Collection already exists
+```
+
+**Solution:**
+
+This is usually harmless. If you want to rebuild from scratch:
+
+```bash
+# Stop Qdrant
+docker stop docbot-qdrant
+
+# Remove storage
+rm -rf .docbot/qdrant_storage
+
+# Restart
+docker start docbot-qdrant
+
+# Re-index
+docbot index --force
+```
+
+## Indexing issues
+
+### Indexing is very slow
+
+**Expected behavior:**
+
+Indexing can take 5-10 minutes for large codebases. This is normal.
+
+**To speed up indexing:**
+
+1. Exclude unnecessary directories in your `.gitignore`
+2. Use more specific codebase paths:
+
+```jsonc
+{
+  "paths": {
+    "codebase": ["./src"]  // Instead of ["./"]
+  }
+}
+```
+
+3. Use a faster embedding model (though quality may decrease):
+
+```jsonc
+{
+  "models": {
+    "embedding": "openai/text-embedding-3-small"
+  }
+}
+```
+
+### Out of memory during indexing
+
+**Error:**
+```
+JavaScript heap out of memory
+```
+
+**Solution:**
+
+Increase Node/Bun memory limit:
+
+```bash
+export NODE_OPTIONS="--max-old-space-size=4096"
+docbot index
+```
+
+### No files indexed
+
+**Error:**
+```
+Indexed 0 documents, 0 code files
+```
+
+**Solution:**
+
+1. Check that paths in config are correct:
+
+```bash
+ls ./docs  # Should show your docs
+ls ./src   # Should show your code
+```
+
+2. Verify paths in `docbot.config.jsonc`:
+
+```jsonc
+{
+  "paths": {
+    "docs": "./docs",      // Relative to project root
+    "codebase": ["./src"]
+  }
+}
+```
+
+3. Try specifying paths explicitly:
+
+```bash
+docbot index --docs ./docs --codebase ./src
+```
+
+## Runtime issues
+
+### AI Gateway API key missing
+
+**Error:**
+```
+Missing AI_GATEWAY_API_KEY environment variable
+```
+
+**Solution:**
+
+Set the environment variable:
+
+```bash
+export AI_GATEWAY_API_KEY=your_api_key_here
+```
+
+Or add to `.env` file:
+
+```bash
+AI_GATEWAY_API_KEY=your_api_key_here
+```
+
+<Warning>
+Never commit your API key to version control. Always use environment variables or `.env` files (added to `.gitignore`).
+</Warning>
+
+### Server port already in use
+
+**Error:**
+```
+Error: Port 3070 is already in use
+```
+
+**Solution:**
+
+1. Use a different port:
+
+```bash
+docbot run "your task" --port 3071
+```
+
+2. Or update your config:
+
+```jsonc
+{
+  "server": {
+    "port": 3071
+  }
+}
+```
+
+3. Or find and stop the process using port 3070:
+
+```bash
+lsof -i :3070
+kill -9 <PID>
+```
+
+### Search returns no results
+
+**Issue:**
+Search commands return empty results.
+
+**Solution:**
+
+1. Verify index exists:
+
+```bash
+curl http://127.0.0.1:6333/collections
+```
+
+2. Check collection names match your config:
+
+```jsonc
+{
+  "qdrant": {
+    "collections": {
+      "docs": "docbot_my-project_docs",  // Should appear in collections list
+      "code": "docbot_my-project_code"
+    }
+  }
+}
+```
+
+3. Re-index if needed:
+
+```bash
+docbot index --force
+```
+
+### TUI display issues
+
+**Issue:**
+Terminal UI appears broken or garbled.
+
+**Solution:**
+
+1. Ensure terminal supports ANSI colors and Unicode
+2. Try running without TUI:
+
+```bash
+docbot serve
+```
+
+3. Disable verbose mode:
+
+```bash
+docbot run "your task" --no-verbose
+```
+
+## Model and API issues
+
+### Rate limit exceeded
+
+**Error:**
+```
+Rate limit exceeded
+```
+
+**Solution:**
+
+1. Wait a few minutes and retry
+2. Consider using different models with higher rate limits
+3. Check your AI Gateway quota and billing
+
+### Model not found
+
+**Error:**
+```
+Model 'provider/model-name' not found
+```
+
+**Solution:**
+
+1. Verify the model ID is correct and supported by Vercel AI Gateway
+2. Check for typos in `docbot.config.jsonc`
+3. Ensure your AI Gateway subscription supports that model
+
+### Token limit exceeded
+
+**Error:**
+```
+Context length exceeded
+```
+
+**Solution:**
+
+1. Use a model with larger context:
+
+```jsonc
+{
+  "models": {
+    "context": "google/gemini-3-pro-preview"  // Large context window
+  }
+}
+```
+
+2. Break down large tasks into smaller subtasks
+3. Reduce the amount of code/docs being analyzed at once
+
+## Getting help
+
+If you're still experiencing issues:
+
+1. **Check logs**: Run with `--verbose` flag:
+   ```bash
+   docbot run "your task" --verbose
+   ```
+
+2. **View log panel** in TUI: Press `Ctrl+L` to toggle
+
+3. **Check Docker logs**:
+   ```bash
+   docker logs docbot-qdrant
+   ```
+
+4. **Open an issue**: [GitHub Issues](https://github.com/helmlabs/helm/issues)
+
+5. **Reach out on X**: [@pariscestchiant](https://x.com/pariscestchiant)
+
+<Note>
+When reporting issues, include:
+- Docbot version (`docbot --version`)
+- Operating system
+- Error messages and logs
+- Configuration file (redact sensitive data)
+</Note>
+
+## Next steps
+
+- Review [local setup guide](/guides/local-setup) for initial configuration
+- Learn about [Docker and Qdrant](/guides/docker-qdrant) setup
+- Configure [custom models](/guides/custom-models) for optimization

@@ -1,0 +1,386 @@
+---
+title: ResolvedConfig interface
+description: Runtime configuration interface with all required fields resolved
+---
+
+## Overview
+
+The `ResolvedConfig` interface represents the fully resolved configuration used at runtime. It's created by merging user-provided configuration (`DocbotUserConfig`) with default values. All fields are required and guaranteed to be present.
+
+## Import
+
+```typescript
+import type { ResolvedConfig } from "docbot/config"
+import { loadConfig } from "docbot/config"
+```
+
+## Interface definition
+
+```typescript
+interface ResolvedConfig {
+  projectSlug: string
+  qdrant: {
+    url: string
+    manifestPath: string
+    collections: { docs: string; code: string }
+  }
+  models: {
+    planning: string
+    planningHeavy: string
+    prose: string
+    fast: string
+    nano: string
+    context: string
+    embedding: string
+    embeddingLarge: string
+  }
+  agents: {
+    discoveryBudget: number
+  }
+  server: {
+    port: number
+  }
+  paths: {
+    cacheDir: string
+    manifest: string
+    docs?: string
+    codebase?: string[]
+  }
+}
+```
+
+## Fields
+
+<ResponseField name="projectSlug" type="string" required>
+  Sanitized project identifier used for collection naming.
+  
+  Default: Sanitized from `package.json` name field
+</ResponseField>
+
+<ResponseField name="qdrant" type="object" required>
+  Qdrant vector database configuration
+  
+  <Expandable title="properties">
+    <ResponseField name="url" type="string" required>
+      Qdrant server URL.
+      
+      Default: `"http://127.0.0.1:6333"`
+    </ResponseField>
+    
+    <ResponseField name="manifestPath" type="string" required>
+      Path to the manifest file that tracks indexed files.
+      
+      Default: `".docbot/manifest.json"`
+    </ResponseField>
+    
+    <ResponseField name="collections" type="object" required>
+      Collection names for vector storage
+      
+      <Expandable title="properties">
+        <ResponseField name="docs" type="string" required>
+          Collection name for documentation embeddings.
+          
+          Default: `docbot_{projectSlug}_docs`
+        </ResponseField>
+        
+        <ResponseField name="code" type="string" required>
+          Collection name for code embeddings.
+          
+          Default: `docbot_{projectSlug}_code`
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="models" type="object" required>
+  Resolved model identifiers for all AI operations
+  
+  <Expandable title="properties">
+    <ResponseField name="planning" type="string" required>
+      Model for planning and orchestration.
+      
+      Default: `"openai/gpt-5.2"`
+    </ResponseField>
+    
+    <ResponseField name="planningHeavy" type="string" required>
+      Model for complex planning tasks.
+      
+      Default: `"anthropic/claude-opus-4.5"`
+    </ResponseField>
+    
+    <ResponseField name="prose" type="string" required>
+      Model for generating documentation content.
+      
+      Default: `"anthropic/claude-sonnet-4.5"`
+    </ResponseField>
+    
+    <ResponseField name="fast" type="string" required>
+      Fast model for quick operations.
+      
+      Default: `"openai/gpt-5.2"`
+    </ResponseField>
+    
+    <ResponseField name="nano" type="string" required>
+      Lightweight model for simple tasks.
+      
+      Default: `"google/gemini-3-flash"`
+    </ResponseField>
+    
+    <ResponseField name="context" type="string" required>
+      Model for long-context analysis operations.
+      
+      Default: `"google/gemini-3-pro-preview"`
+    </ResponseField>
+    
+    <ResponseField name="embedding" type="string" required>
+      Model for generating embeddings for semantic search.
+      
+      Default: `"openai/text-embedding-3-small"`
+    </ResponseField>
+    
+    <ResponseField name="embeddingLarge" type="string" required>
+      Model for generating high-quality embeddings.
+      
+      Default: `"openai/text-embedding-3-large"`
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="agents" type="object" required>
+  Agent behavior configuration
+  
+  <Expandable title="properties">
+    <ResponseField name="discoveryBudget" type="number" required>
+      Maximum number of discovery iterations for file exploration.
+      
+      Default: `6`
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="server" type="object" required>
+  Server configuration
+  
+  <Expandable title="properties">
+    <ResponseField name="port" type="number" required>
+      Port number for the development server.
+      
+      Default: `3070`
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="paths" type="object" required>
+  Runtime paths for cache, manifest, and optional user-configured paths
+  
+  <Expandable title="properties">
+    <ResponseField name="cacheDir" type="string" required>
+      Directory for caching temporary files.
+      
+      Typically: `".docbot"`
+    </ResponseField>
+    
+    <ResponseField name="manifest" type="string" required>
+      Full path to the manifest file.
+      
+      Typically: `".docbot/manifest.json"`
+    </ResponseField>
+    
+    <ResponseField name="docs" type="string" optional>
+      Path to documentation output directory (if configured).
+    </ResponseField>
+    
+    <ResponseField name="codebase" type="string[]" optional>
+      Array of paths to source code directories (if configured).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Loading configuration
+
+### loadConfig
+
+Loads and resolves configuration from the project:
+
+```typescript
+function loadConfig(options?: LoadConfigOptions): Promise<ResolvedConfig>
+```
+
+```typescript
+import { loadConfig } from "docbot/config"
+
+// Load from current directory
+const config = await loadConfig()
+
+// Load from specific directory
+const config = await loadConfig({ cwd: "/path/to/project" })
+
+// Access resolved values
+console.log(config.projectSlug)
+console.log(config.models.planning)
+console.log(config.qdrant.collections.code)
+```
+
+## Default values
+
+The following constants define the default configuration:
+
+### DEFAULT_MODELS
+
+```typescript
+const DEFAULT_MODELS = {
+  context: "google/gemini-3-pro-preview",
+  embedding: "openai/text-embedding-3-small",
+  embeddingLarge: "openai/text-embedding-3-large",
+  fast: "openai/gpt-5.2",
+  nano: "google/gemini-3-flash",
+  planning: "openai/gpt-5.2",
+  planningHeavy: "anthropic/claude-opus-4.5",
+  prose: "anthropic/claude-sonnet-4.5",
+} as const
+```
+
+### DEFAULT_AGENTS
+
+```typescript
+const DEFAULT_AGENTS = {
+  discoveryBudget: 6,
+} as const
+```
+
+### DEFAULT_QDRANT_URL
+
+```typescript
+const DEFAULT_QDRANT_URL = "http://127.0.0.1:6333"
+```
+
+### DEFAULT_SERVER_PORT
+
+```typescript
+const DEFAULT_SERVER_PORT = 3070
+```
+
+## Utility functions
+
+### makeCollectionNames
+
+Generates default collection names from a project slug:
+
+```typescript
+function makeCollectionNames(slug: string): {
+  code: string
+  docs: string
+}
+```
+
+```typescript
+import { makeCollectionNames } from "docbot/config"
+
+const collections = makeCollectionNames("my-project")
+// {
+//   code: "docbot_my-project_code",
+//   docs: "docbot_my-project_docs"
+// }
+```
+
+### sanitizeSlug
+
+Sanitizes a string for use as a project slug:
+
+```typescript
+function sanitizeSlug(name: string): string
+```
+
+Converts to lowercase, replaces non-alphanumeric characters (except hyphens) with hyphens, and removes leading/trailing hyphens.
+
+```typescript
+import { sanitizeSlug } from "docbot/config"
+
+sanitizeSlug("My Project Name!")
+// "my-project-name"
+
+sanitizeSlug("@company/package-name")
+// "company-package-name"
+
+sanitizeSlug("Test___Project")
+// "test-project"
+```
+
+### findProjectRoot
+
+Finds the project root directory by searching for `package.json`:
+
+```typescript
+function findProjectRoot(startDir?: string): string | null
+```
+
+```typescript
+import { findProjectRoot } from "docbot/config"
+
+const root = findProjectRoot()
+if (root) {
+  console.log("Project root:", root)
+}
+```
+
+## Usage examples
+
+### Accessing configuration in code
+
+```typescript
+import { loadConfig } from "docbot/config"
+
+const config = await loadConfig()
+
+// Use model configuration
+const planningModel = config.models.planning
+
+// Access Qdrant settings
+const qdrantUrl = config.qdrant.url
+const codeCollection = config.qdrant.collections.code
+
+// Check agent settings
+const maxIterations = config.agents.discoveryBudget
+```
+
+### Custom configuration with overrides
+
+```typescript
+import { loadConfig, DEFAULT_MODELS } from "docbot/config"
+
+const config = await loadConfig()
+
+// Merge with custom overrides
+const customConfig = {
+  ...config,
+  models: {
+    ...config.models,
+    planning: "openai/gpt-4o",
+  },
+}
+```
+
+### Validating resolved configuration
+
+```typescript
+import type { ResolvedConfig } from "docbot/config"
+import { loadConfig } from "docbot/config"
+
+function validateConfig(config: ResolvedConfig): boolean {
+  // All fields are guaranteed to exist
+  return (
+    config.projectSlug.length > 0 &&
+    config.qdrant.url.startsWith("http") &&
+    config.models.planning.includes("/") &&
+    config.agents.discoveryBudget > 0 &&
+    config.server.port > 0 &&
+    config.server.port <= 65535
+  )
+}
+
+const config = await loadConfig()
+if (validateConfig(config)) {
+  console.log("Configuration is valid")
+}
+```

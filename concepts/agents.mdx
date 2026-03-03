@@ -1,0 +1,480 @@
+---
+title: Agents
+description: The specialized agents that coordinate research, planning, writing, and user interaction
+---
+
+Docbot uses a multi-agent architecture where each agent has a specific role and toolset. Agents communicate through the blackboard—a shared SQLite database that tracks session state.
+
+## Agent roles
+
+Five agents work together to produce documentation:
+
+<CardGroup cols={2}>
+  <Card title="Orchestrator" icon="diagram-project">
+    Coordinates the workflow, delegates tasks, and tracks overall progress
+  </Card>
+  <Card title="Research agent" icon="magnifying-glass">
+    Searches code and docs to discover what needs documenting
+  </Card>
+  <Card title="Planner agent" icon="list-check">
+    Creates structured outlines from research findings
+  </Card>
+  <Card title="Writer agent" icon="pen">
+    Generates quality documentation from approved plans
+  </Card>
+  <Card title="User interaction agent" icon="messages">
+    Formats information and gets user approvals
+  </Card>
+</CardGroup>
+
+## Orchestrator
+
+The orchestrator is the top-level agent that coordinates all work. It never sees raw file content—only summaries and IDs from the blackboard.
+
+### Responsibilities
+
+- Parse user requests into doc targets
+- Delegate research, planning, and writing to specialist agents
+- Track session progress and prevent redundant work
+- Handle multi-target workflows and dependencies
+- Call `finish_session` when all work is complete
+
+### Tools
+
+The orchestrator has access to:
+
+- **Session management**: `create_doc_target`, `check_session_status`, `mark_target_complete`
+- **Delegation**: `delegate_research`, `delegate_planning`, `delegate_writing`, `delegate_user_interaction`
+- **Blackboard**: `blackboard_read_summary` (read-only access)
+- **Workflow**: `finish_session`
+
+### Session awareness
+
+Before each decision, the orchestrator receives an injected session state summary:
+
+```typescript
+[SESSION STATE]
+phase: writing
+findings: 8
+plans: 1
+artifacts: 2
+targets:
+  - api-docs: writing
+⚠️ PLANS EXIST - do not create new doc targets or re-research
+[/SESSION STATE]
+```
+
+This context prevents common mistakes:
+
+- Creating duplicate doc targets for the same request
+- Re-researching when findings already exist
+- Re-planning when an approved plan is ready
+- Continuing to run after all targets are complete
+
+<Info>
+The orchestrator uses the `planning` model (GPT-5.2 by default) because it coordinates complex workflows with many decision points.
+</Info>
+
+### Termination
+
+The orchestrator stops when:
+
+- It calls `finish_session` (preferred)
+- All doc targets reach status "complete" (safety net)
+- It reaches the max step count of 30 (hard limit)
+
+## Research agent
+
+The research agent discovers information about what to document by searching code and existing docs.
+
+### Responsibilities
+
+- Execute 5-8 targeted searches across code and docs
+- Translate code findings into user-facing language
+- Record findings to the blackboard with relevance scores
+- Focus on product capabilities, not implementation details
+
+### Tools
+
+The research agent has access to:
+
+- **Code search**: `code_search` (regex), `semantic_code_search` (natural language)
+- **Doc search**: `search_docs`
+- **Blackboard**: `blackboard_write_finding`, `blackboard_read_findings`, `mark_research_complete`
+
+### Search strategy
+
+The agent chooses search tools based on query type:
+
+```typescript
+// Exact identifier lookup
+code_search("interface UserSettings")
+
+// Conceptual discovery
+semantic_code_search("how do we handle user preferences")
+
+// Existing documentation
+search_docs("settings")
+```
+
+### Findings format
+
+Each finding is written to the blackboard with structured metadata:
+
+```typescript
+{
+  type: "code",
+  filePath: "apps/web/src/components/settings/SettingsPanel.tsx",
+  summary: "Settings panel component allowing users to update workspace preferences",
+  relevanceScore: 0.9,
+  metadata: {
+    symbols: ["SettingsPanel", "updatePreferences"],
+    imports: ["useSettings", "updateWorkspace"]
+  }
+}
+```
+
+<Info>
+The research agent uses the `fast` model (Claude Haiku by default) because it performs many simple, high-volume operations.
+</Info>
+
+### Termination
+
+The research agent stops when:
+
+- It calls `mark_research_complete` (preferred)
+- It reaches the max step count of 15 (hard limit)
+
+## Planner agent
+
+The planner creates structured documentation outlines from research findings.
+
+### Responsibilities
+
+- Read findings for a doc target
+- Analyze existing navigation structure
+- Create a clear outline with sections mapped to findings
+- Write the plan to the blackboard
+- Submit the plan immediately without iteration
+
+### Tools
+
+The planner has access to:
+
+- **Doc structure**: `read_nav` (analyze navigation), `read_doc` (check existing pages)
+- **Blackboard**: `blackboard_read_findings`, `blackboard_write_plan`, `submit_plan`
+
+### Planning principles
+
+The planner follows specific guidelines encoded in its system prompt:
+
+- **Reorganize over add**: Consolidate messy docs rather than creating new pages
+- **Update over create**: Prefer updating existing docs
+- **Consolidate over duplicate**: Merge similar content
+- **Delete ruthlessly**: Remove outdated or technical sections
+- **User intent over product structure**: Organize by what users want to do
+
+### Navigation awareness
+
+The planner calls `read_nav` to understand how docs are currently organized:
+
+```json
+{
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": ["introduction", "quickstart"]
+    },
+    {
+      "group": "Core Concepts",
+      "pages": ["architecture", "workflow"]
+    }
+  ]
+}
+```
+
+This helps it decide:
+
+- Where new pages should go (which group)
+- Whether to split content across pages or consolidate
+- How to name pages to fit existing conventions
+
+<Accordion title="Example: Plan outline">
+```typescript
+{
+  title: "Settings documentation",
+  outline: {
+    sections: [
+      {
+        id: "section-1",
+        title: "Accessing settings",
+        description: "How to open and navigate the settings page",
+        findingIds: ["finding-a3f2b1c4", "finding-d8e9a2f1"],
+        orderIndex: 0
+      },
+      {
+        id: "section-2",
+        title: "General settings",
+        description: "Workspace name, language, and timezone preferences",
+        findingIds: ["finding-c4b7e2a9"],
+        orderIndex: 1
+      },
+      {
+        id: "section-3",
+        title: "Notification preferences",
+        findingIds: ["finding-f1a8c3d2", "finding-b9e4f7a1"],
+        orderIndex: 2
+      }
+    ]
+  }
+}
+```
+</Accordion>
+
+<Info>
+The planner uses the `fast` model because planning is more about structure than prose quality.
+</Info>
+
+### Termination
+
+The planner stops when:
+
+- It calls `submit_plan` (preferred)
+- It reaches the max step count of 12 (hard limit)
+
+The planner is explicitly told NOT to iterate or refine—create one plan and submit it.
+
+## Writer agent
+
+The writer generates quality documentation from approved plans.
+
+### Responsibilities
+
+- Read the approved plan and associated findings
+- Read source files for context
+- Write clear, user-facing documentation with proper structure
+- Create or update MDX files
+- Record artifacts to the blackboard
+
+### Tools
+
+The writer has access to:
+
+- **File operations**: `read_file`, `read_doc`, `create_doc`, `update_doc`
+- **Navigation**: `read_nav`
+- **Blackboard**: `blackboard_read_plan`, `blackboard_read_finding`, `blackboard_write_artifact`, `mark_writing_complete`
+- **User interaction**: `suggest_media` (flag where images/videos would help)
+
+### Writing guidelines
+
+The writer follows strict content principles:
+
+**Audience**: Non-technical users who want to know what they can do, not how it's built
+
+**Avoid**:
+- Function names, component names, code internals
+- Marketing speak ("powerful", "seamlessly", "robust")
+- Buzzwords ("leverage", "utilize", "streamline")
+- Filler phrases ("it's important to note that")
+
+**Use**:
+- Clear, actionable explanations
+- Mintlify components for structure (`<Steps>`, `<Tabs>`, `<Accordion>`)
+- Concrete examples and outcomes
+- Sentence case for headings
+
+### Component usage
+
+The writer knows when to use Mintlify components:
+
+- `<Steps>`: Multi-step procedures with clear sequence
+- `<Tabs>`: Same content differs by role/platform/version
+- `<Accordion>`: Optional or advanced content users may skip
+- `<Card>` / `<CardGroup>`: Navigation to related pages
+- `<Info>` / `<Warning>` / `<Tip>`: Important callouts
+
+<Warning>
+The writer is told to default to prose. A page with zero components is often better than one stuffed with them.
+</Warning>
+
+### Artifact creation
+
+Every file the writer creates or updates becomes an artifact:
+
+```typescript
+blackboard_write_artifact({
+  planId: "plan-a8f3c2e1",
+  sectionId: "section-1",
+  type: "final",
+  content: "...", // full MDX content
+  filePath: "docs/features/settings.mdx",
+  version: 1,
+  status: "written"
+})
+```
+
+This creates an audit trail of what was written during the session.
+
+<Info>
+The writer uses the `prose` model (Claude Sonnet by default) because content quality is critical for user-facing documentation.
+</Info>
+
+### Termination
+
+The writer stops when:
+
+- It calls `mark_writing_complete` (preferred)
+- It reaches the max step count of 20 (hard limit)
+
+The writer is explicitly told NOT to re-read files for verification or make polish passes.
+
+## User interaction agent
+
+The user interaction agent handles communication between Docbot and the user.
+
+### Responsibilities
+
+- Format plans and summaries in a clear, readable way
+- Present options and questions to users
+- Get approvals and feedback
+- Return structured responses to the orchestrator
+
+### Tools
+
+The user interaction agent has access to:
+
+- **Interaction**: `ask_user`, `present_options`
+- **Blackboard**: `blackboard_read_plan`, `mark_interaction_complete`
+
+### Approval workflow
+
+When the orchestrator delegates plan approval:
+
+<Steps>
+  <Step title="Read the plan">
+    Call `blackboard_read_plan` to get the full outline
+  </Step>
+  <Step title="Format for display">
+    Convert the plan into readable text with sections and finding summaries
+  </Step>
+  <Step title="Ask for approval">
+    Call `ask_user` with the formatted plan and approval prompt
+  </Step>
+  <Step title="Return response">
+    Call `mark_interaction_complete` with the user's decision (approved/rejected/feedback)
+  </Step>
+</Steps>
+
+The orchestrator receives the approval status and updates the blackboard accordingly.
+
+<Info>
+The user interaction agent uses the `fast` model because it's formatting structured data, not generating prose.
+</Info>
+
+### Termination
+
+The user interaction agent stops when:
+
+- It calls `mark_interaction_complete` (preferred)
+- It reaches the max step count of 10 (hard limit)
+
+## Agent communication
+
+Agents don't call each other directly—they communicate through the blackboard.
+
+### Delegation flow
+
+```typescript
+// Orchestrator delegates research
+delegate_research({
+  docTargetId: "target-1",
+  query: "user settings functionality",
+  scope: "both" // code + docs
+})
+
+// Under the hood:
+// 1. Orchestrator updates doc target status to "researching"
+// 2. Orchestrator streams research agent with prompt
+// 3. Research agent performs searches
+// 4. Research agent writes findings to blackboard
+// 5. Research agent calls mark_research_complete
+// 6. Orchestrator receives completion signal
+// 7. Orchestrator reads finding count from blackboard
+// 8. Orchestrator returns summary to caller
+```
+
+This decoupling means:
+
+- Agents can run in different processes or even different machines
+- Execution can be paused and resumed
+- Session state persists across restarts (if using a persistent database)
+
+### Blackboard operations
+
+Common blackboard operations by agent:
+
+| Agent | Read | Write |
+|-------|------|-------|
+| Orchestrator | Session summary | Doc targets, status updates |
+| Research | Existing findings | New findings |
+| Planner | Findings for target, existing docs | Plans |
+| Writer | Plan, findings, files | Artifacts |
+| User interaction | Plans, session summary | (none - read-only) |
+
+This access control prevents agents from interfering with each other's work.
+
+## Model selection
+
+Each agent uses a different model based on its needs:
+
+```jsonc
+{
+  "models": {
+    "planning": "openai/gpt-5.2",        // orchestrator
+    "prose": "anthropic/claude-sonnet-4.5", // writer
+    "fast": "anthropic/claude-haiku-4.5"    // research, planner, user interaction
+  }
+}
+```
+
+Why:
+
+- **Orchestrator**: Needs reasoning capability for complex workflows → expensive model
+- **Writer**: Needs prose quality for user-facing docs → prose-focused model
+- **Research/planner/user**: Structured tasks with clear prompts → cheap, fast model
+
+This balances quality and cost—use expensive models only where they matter.
+
+## Runtime configuration
+
+You can customize agent behavior in `docbot.config.jsonc`:
+
+```jsonc
+{
+  "agents": {
+    "runtime": {
+      "orchestrator": {
+        "maxRetries": 3,
+        "providerOptions": {
+          "anthropic": { "cacheControl": true }
+        }
+      },
+      "research": {
+        "maxRetries": 2
+      },
+      "planner": {
+        "maxRetries": 2
+      },
+      "writer": {
+        "maxRetries": 2
+      },
+      "userInteraction": {
+        "maxRetries": 1
+      }
+    }
+  }
+}
+```
+
+- `maxRetries`: How many times to retry failed tool calls
+- `providerOptions`: Provider-specific options (e.g., Anthropic cache control)

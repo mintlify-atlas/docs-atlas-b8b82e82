@@ -1,0 +1,291 @@
+---
+title: Setting up Qdrant with Docker
+description: Learn how to configure and run Qdrant vector database locally using Docker
+---
+
+Qdrant is the vector database that powers Docbot's semantic search capabilities. This guide covers setting up Qdrant with Docker for local development.
+
+## Why Qdrant?
+
+Docbot uses Qdrant because it's:
+- Easy to run locally via Docker
+- Performant for document and code search
+- Well-suited for semantic similarity queries
+- Reliable for production use
+
+<Note>
+Qdrant is currently required for Docbot. Support for other vector stores may be added in the future.
+</Note>
+
+## Docker setup
+
+<Steps>
+
+<Step title="Install Docker">
+
+If you don't have Docker installed:
+
+- **macOS/Windows**: Download [Docker Desktop](https://www.docker.com/products/docker-desktop)
+- **Linux**: Follow the [installation guide](https://docs.docker.com/engine/install/) for your distribution
+
+Verify installation:
+
+```bash
+docker --version
+```
+
+</Step>
+
+<Step title="Pull the Qdrant image">
+
+Download the official Qdrant Docker image:
+
+```bash
+docker pull qdrant/qdrant
+```
+
+</Step>
+
+<Step title="Start Qdrant container">
+
+Run Qdrant with persistent storage:
+
+```bash
+docker run -d \
+  --name docbot-qdrant \
+  -p 6333:6333 \
+  -v "$(pwd)/.docbot/qdrant_storage:/qdrant/storage" \
+  qdrant/qdrant
+```
+
+This command:
+- Runs the container in detached mode (`-d`)
+- Names it `docbot-qdrant` for easy reference
+- Exposes port 6333 for API access
+- Mounts a volume to persist data in `.docbot/qdrant_storage`
+
+</Step>
+
+<Step title="Verify Qdrant is running">
+
+Check the container status:
+
+```bash
+docker ps --filter name=docbot-qdrant
+```
+
+Test the health endpoint:
+
+```bash
+curl http://127.0.0.1:6333/health
+```
+
+You should see a response like:
+```json
+{"status":"ok"}
+```
+
+</Step>
+
+</Steps>
+
+## Qdrant collections
+
+Docbot creates two collections for indexing:
+
+### Documentation collection
+
+Stores document chunks with the following schema:
+
+- **Vector size**: 1536 (default for OpenAI embeddings)
+- **Distance metric**: Cosine similarity
+- **Payload indexes**:
+  - `path` (keyword) - Document file path
+  - `section` (keyword) - Section heading
+
+### Code collection
+
+Stores code chunks with additional metadata:
+
+- **Vector size**: 1536
+- **Distance metric**: Cosine similarity  
+- **Payload indexes**:
+  - `path` (keyword) - Source file path
+  - `symbol` (keyword) - Function/class name
+  - `language` (keyword) - Programming language
+
+<Tip>
+Collection names are automatically generated from your `projectSlug` configuration: `docbot_{slug}_docs` and `docbot_{slug}_code`.
+</Tip>
+
+## Configuration
+
+Configure Qdrant settings in `docbot.config.jsonc`:
+
+```jsonc
+{
+  "qdrant": {
+    "url": "http://127.0.0.1:6333",
+    "manifestPath": ".docbot/manifest.json",
+    "collections": {
+      "docs": "docbot_my-project_docs",
+      "code": "docbot_my-project_code"
+    }
+  }
+}
+```
+
+### Configuration options
+
+- **`url`** - Qdrant instance URL (default: `http://127.0.0.1:6333`)
+- **`manifestPath`** - Path to index manifest file (tracks indexed files)
+- **`collections.docs`** - Name for documentation collection
+- **`collections.code`** - Name for code collection
+
+## Managing Qdrant
+
+### Starting and stopping
+
+Stop the container:
+
+```bash
+docker stop docbot-qdrant
+```
+
+Restart the container:
+
+```bash
+docker start docbot-qdrant
+```
+
+Remove the container (data persists in volume):
+
+```bash
+docker rm docbot-qdrant
+```
+
+### Viewing logs
+
+Check Qdrant logs for debugging:
+
+```bash
+docker logs docbot-qdrant
+```
+
+Follow logs in real-time:
+
+```bash
+docker logs -f docbot-qdrant
+```
+
+### Accessing the Web UI
+
+Qdrant includes a web interface at:
+
+```
+http://127.0.0.1:6333/dashboard
+```
+
+Use it to:
+- Browse collections
+- Inspect vectors and payloads
+- Test search queries manually
+- Monitor collection statistics
+
+## Using a remote Qdrant instance
+
+For CI/CD or multi-user scenarios, you may want to use a hosted Qdrant instance.
+
+<Steps>
+
+<Step title="Deploy Qdrant">
+
+Options for hosted Qdrant:
+- [Qdrant Cloud](https://cloud.qdrant.io/) - Official managed service
+- Self-hosted on your infrastructure
+- Docker Compose for team development
+
+</Step>
+
+<Step title="Update configuration">
+
+Point Docbot to your remote instance:
+
+```jsonc
+{
+  "qdrant": {
+    "url": "https://your-qdrant-instance.com:6333"
+  }
+}
+```
+
+Or use the CLI flag:
+
+```bash
+docbot index --qdrant-url https://your-qdrant-instance.com:6333
+```
+
+</Step>
+
+<Step title="Configure authentication (if needed)">
+
+If your Qdrant instance requires authentication, you'll need to set up API keys according to your hosting provider's documentation.
+
+</Step>
+
+</Steps>
+
+## Data persistence
+
+### Local storage
+
+The mounted volume at `.docbot/qdrant_storage` contains all your vector data. This directory:
+- Persists across container restarts
+- Should be added to `.gitignore`
+- Can be backed up for disaster recovery
+
+### Clearing and rebuilding
+
+To completely reset your index:
+
+```bash
+# Stop and remove container
+docker stop docbot-qdrant
+docker rm docbot-qdrant
+
+# Remove storage
+rm -rf .docbot/qdrant_storage
+
+# Start fresh
+docker run -d --name docbot-qdrant -p 6333:6333 \
+  -v "$(pwd)/.docbot/qdrant_storage:/qdrant/storage" qdrant/qdrant
+
+# Re-index
+bunx @helmlabs/docbot index --force
+```
+
+<Warning>
+Deleting `qdrant_storage` removes all indexed data. You'll need to re-index your documentation and codebase.
+</Warning>
+
+## Automatic initialization
+
+When you run `docbot init`, Docbot automatically:
+
+1. Checks if Docker is installed
+2. Verifies if Qdrant is already running
+3. Attempts to start a container if needed
+4. Waits for Qdrant to become accessible
+5. Provides fallback instructions if automatic setup fails
+
+You can skip this with:
+
+```bash
+docbot init --skip-docker
+```
+
+## Next steps
+
+- Configure [custom AI models](/guides/custom-models) for embeddings
+- Learn about [indexing strategies](/api-reference/cli/index)
+- Review [troubleshooting tips](/guides/troubleshooting) for Qdrant issues

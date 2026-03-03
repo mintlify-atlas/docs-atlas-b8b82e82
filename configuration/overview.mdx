@@ -1,0 +1,92 @@
+---
+title: Configuration overview
+description: Learn how to configure Docbot using docbot.config.jsonc
+---
+
+Docbot uses a `docbot.config.jsonc` file in your project root to configure behavior, model selection, and Qdrant settings.
+
+## Configuration file
+
+The configuration file is created when you run `docbot init`. CLI flags override config values.
+
+```jsonc
+{
+  "projectSlug": "my-project",
+  "paths": {
+    "docs": "./docs",
+    "codebase": ["./apps/web", "./packages/shared"]
+  },
+  "qdrant": {
+    "url": "http://127.0.0.1:6333",
+    "manifestPath": ".docbot/manifest.json",
+    "collections": {
+      "docs": "docbot_my-project_docs",
+      "code": "docbot_my-project_code"
+    }
+  },
+  "server": { "port": 3070 },
+  "models": {
+    "planning": "openai/gpt-5.2",
+    "prose": "anthropic/claude-sonnet-4.5",
+    "fast": "anthropic/claude-haiku-4.5",
+    "embedding": "openai/text-embedding-3-small",
+    "reranker": "cohere/rerank-v3.5"
+  },
+  "agents": {
+    "discoveryBudget": 6
+  }
+}
+```
+
+## Top-level configuration
+
+<ParamField path="projectSlug" type="string" optional>
+  Project identifier used for collection naming. Defaults to sanitized package.json name.
+  
+  Example: `"my-project"`
+</ParamField>
+
+<ParamField path="paths" type="object" optional>
+  Default paths for CLI inputs.
+  
+  <ParamField path="paths.docs" type="string" optional>
+    Path to documentation directory.
+    
+    Example: `"./docs"`
+  </ParamField>
+  
+  <ParamField path="paths.codebase" type="string | string[]" optional>
+    Path or array of paths to codebase directories.
+    
+    Examples:
+    - Single path: `"./src"`
+    - Multiple paths: `["./apps/web", "./packages/shared"]`
+  </ParamField>
+</ParamField>
+
+<ParamField path="server" type="object" optional>
+  Server configuration.
+  
+  <ParamField path="server.port" type="number" default="3070">
+    Port number for the HTTP server. Must be between 1 and 65535.
+  </ParamField>
+</ParamField>
+
+<ParamField path="agents" type="object" optional>
+  Agent behavior settings.
+  
+  <ParamField path="agents.discoveryBudget" type="number" default="6">
+    Budget for discovery operations. Must be a positive integer.
+  </ParamField>
+</ParamField>
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Model configuration" icon="brain" href="/configuration/models">
+    Configure AI models for different tasks
+  </Card>
+  <Card title="Qdrant configuration" icon="database" href="/configuration/qdrant">
+    Configure vector database settings
+  </Card>
+</CardGroup>

@@ -1,0 +1,173 @@
+---
+title: How it works
+description: Understand Docbot's architecture and how it analyzes, plans, and executes documentation improvements
+---
+
+Docbot uses a multi-agent architecture to keep your documentation synchronized with your codebase. Instead of relying on guesswork, it reads both your docs and code to propose concrete, file-level operations that you approve before execution.
+
+## Architecture overview
+
+Docbot is built around three core components that work together:
+
+<CardGroup cols={3}>
+  <Card title="Vector search" icon="magnifying-glass">
+    Qdrant-powered semantic and exact-match search across docs and code
+  </Card>
+  <Card title="Blackboard" icon="database">
+    SQLite-based shared state for agent coordination and session tracking
+  </Card>
+  <Card title="Multi-agent system" icon="users">
+    Specialized agents for research, planning, writing, and orchestration
+  </Card>
+</CardGroup>
+
+### Vector search with Qdrant
+
+Docbot indexes your documentation and codebase into Qdrant collections:
+
+- **Docs collection**: MDX files chunked by section with metadata (title, headings, navigation)
+- **Code collection**: Source files chunked by symbol (functions, classes, types) with context
+
+Search combines semantic similarity (embeddings) with exact-match (ripgrep) and reranks results for relevance. This lets agents find what matters without reading every file.
+
+```typescript
+// Example: Finding authentication code
+semantic_code_search("where do we handle user authentication")
+// Returns relevant files with context about auth flows
+
+code_search("class.*Auth.*Provider")
+// Returns exact matches for class names matching the pattern
+```
+
+### The blackboard pattern
+
+Agents don't pass data directly—they read from and write to a shared SQLite database called the blackboard. This decouples agent execution and provides session persistence.
+
+The blackboard stores:
+
+- **Doc targets**: High-level documentation goals (e.g., "document the settings page")
+- **Findings**: Research results from code/doc searches, tagged by relevance
+- **Plans**: Structured outlines with sections mapped to findings
+- **Artifacts**: Generated documentation content with version tracking
+
+<Info>
+The blackboard uses an ephemeral SQLite database in the OS temp directory by default. Sessions don't persist across runs unless you specify a custom database path.
+</Info>
+
+### Session state tracking
+
+Each documentation run creates a session that tracks progress through workflow phases:
+
+```typescript
+interface SessionSummary {
+  sessionId: string
+  docTargets: Array<{ id: string; name: string; status: string }>
+  totalFindings: number
+  totalPlans: number
+  totalArtifacts: number
+  currentPhase: 'research' | 'planning' | 'writing' | 'complete'
+}
+```
+
+The orchestrator injects session state into every decision step, preventing redundant work:
+
+- If findings exist and you ask for edits, it skips research
+- If a plan exists and is approved, it proceeds directly to writing
+- If artifacts exist, it treats requests as refinements rather than new work
+
+## Indexing and incremental updates
+
+Docbot maintains a manifest file (`.docbot/manifest.json`) tracking file hashes and modification times. When you run `docbot index`:
+
+<Steps>
+  <Step title="Scan files">
+    Compare current file hashes against the manifest to detect changes
+  </Step>
+  <Step title="Compute diffs">
+    Identify added, changed, removed, and unchanged files
+  </Step>
+  <Step title="Sync embeddings">
+    Update only the changed chunks in Qdrant collections
+  </Step>
+  <Step title="Update manifest">
+    Save new hashes and timestamps for next run
+  </Step>
+</Steps>
+
+This incremental approach means re-indexing is fast—only modified files get reprocessed.
+
+## Search and retrieval
+
+Docbot uses a hybrid search strategy that combines three approaches:
+
+1. **Semantic search**: Vector similarity using embeddings (OpenAI `text-embedding-3-small` by default)
+2. **Exact match**: Regex patterns via ripgrep for precise identifier lookups
+3. **Reranking**: Cohere reranker scores results by relevance to the query
+
+Agents decide which search type to use based on the query:
+
+- Use `code_search` for exact identifiers (function names, types, constants)
+- Use `semantic_code_search` for conceptual queries ("how does auth work")
+- Use `search_docs` for finding existing documentation pages
+
+## Model configuration
+
+Docbot uses different models for different agent roles, balancing cost and quality:
+
+```jsonc
+{
+  "models": {
+    "planning": "openai/gpt-5.2",        // orchestrator decisions
+    "prose": "anthropic/claude-sonnet-4.5", // writing quality content
+    "fast": "anthropic/claude-haiku-4.5",   // research and planning
+    "embedding": "openai/text-embedding-3-small",
+    "reranker": "cohere/rerank-v3.5"
+  }
+}
+```
+
+The orchestrator uses a more capable model because it coordinates complex workflows. The writer uses a prose-focused model for clear, well-structured output. Research and planning use faster, cheaper models since they handle structured data.
+
+## Tool-based execution
+
+Agents interact with the world through tools. Each agent has access to a specific toolset:
+
+- **Orchestrator**: Session management, delegation, blackboard summary
+- **Research agent**: Code/doc search, finding storage
+- **Planner agent**: Navigation analysis, plan creation
+- **Writer agent**: File reading, doc creation/updates, artifact storage
+- **User interaction agent**: Approval prompts, question/answer
+
+<Accordion title="Example: Writer agent tools">
+```typescript
+type WriterAgentTools = {
+  // Doc operations
+  read_doc: (path: string) => string
+  create_doc: (path: string, content: string) => void
+  update_doc: (path: string, content: string) => void
+  read_nav: () => NavigationStructure
+  
+  // Blackboard operations
+  blackboard_read_plan: (planId: string) => Plan
+  blackboard_read_finding: (findingId: string) => Finding
+  blackboard_write_artifact: (artifact: Artifact) => string
+  mark_writing_complete: () => void
+  
+  // User interaction
+  suggest_media: (description: string, location: string) => void
+}
+```
+</Accordion>
+
+This tool-based approach keeps agents focused on their specific responsibilities without giving them access to everything.
+
+## Termination and safety
+
+Each agent has explicit termination conditions to prevent infinite loops:
+
+- **Research agent**: Stops after 5-8 searches or when `mark_research_complete` is called (max 15 steps)
+- **Planner agent**: Stops after calling `submit_plan` (max 12 steps)
+- **Writer agent**: Stops after calling `mark_writing_complete` (max 20 steps)
+- **Orchestrator**: Stops after calling `finish_session` or when all doc targets are complete (max 30 steps)
+
+These hard limits prevent runaway execution while giving agents enough steps to complete complex tasks.

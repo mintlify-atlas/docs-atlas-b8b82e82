@@ -1,0 +1,117 @@
+---
+title: Qdrant configuration
+description: Configure vector database settings for document and code embeddings
+---
+
+Docbot uses [Qdrant](https://qdrant.tech) as its vector database for storing and searching document and code embeddings.
+
+## Setup
+
+When you run `docbot init`, it can automatically set up a local Qdrant instance using Docker:
+
+```bash
+docbot init
+```
+
+To skip Docker setup and configure Qdrant manually:
+
+```bash
+docbot init --skip-docker
+```
+
+### Manual setup
+
+Run Qdrant locally with Docker:
+
+```bash
+docker run --rm -p 6333:6333 -v "$(pwd)/qdrant_storage:/qdrant/storage" qdrant/qdrant
+```
+
+## Configuration
+
+```jsonc
+{
+  "qdrant": {
+    "url": "http://127.0.0.1:6333",
+    "manifestPath": ".docbot/manifest.json",
+    "collections": {
+      "docs": "docbot_my-project_docs",
+      "code": "docbot_my-project_code"
+    }
+  }
+}
+```
+
+## Configuration options
+
+<ParamField path="qdrant.url" type="string" default="http://127.0.0.1:6333">
+  Qdrant server URL. Can be a local instance or a remote Qdrant Cloud URL.
+  
+  Examples:
+  - Local: `"http://127.0.0.1:6333"`
+  - Remote: `"https://your-cluster.qdrant.io"`
+</ParamField>
+
+<ParamField path="qdrant.manifestPath" type="string" default=".docbot/manifest.json">
+  Custom path for the indexing manifest file. The manifest tracks which files have been indexed.
+  
+  Example: `".docbot/manifest.json"`
+</ParamField>
+
+<ParamField path="qdrant.collections" type="object" optional>
+  Custom collection names for docs and code embeddings. If not specified, collection names are auto-generated from `projectSlug`.
+  
+  <ParamField path="qdrant.collections.docs" type="string">
+    Collection name for documentation embeddings.
+    
+    Default format: `docbot_{projectSlug}_docs`
+    
+    Example: `"docbot_my-project_docs"`
+  </ParamField>
+  
+  <ParamField path="qdrant.collections.code" type="string">
+    Collection name for codebase embeddings.
+    
+    Default format: `docbot_{projectSlug}_code`
+    
+    Example: `"docbot_my-project_code"`
+  </ParamField>
+</ParamField>
+
+## Collection naming
+
+By default, Qdrant collections are named using your `projectSlug`:
+
+- Docs collection: `docbot_{projectSlug}_docs`
+- Code collection: `docbot_{projectSlug}_code`
+
+The project slug is sanitized to lowercase alphanumeric characters and hyphens only. If you don't specify a `projectSlug`, Docbot uses your package.json name.
+
+## CLI overrides
+
+You can override the Qdrant URL using the `--qdrant-url` flag:
+
+```bash
+docbot index --qdrant-url http://localhost:6333
+docbot run "task" --qdrant-url http://localhost:6333
+```
+
+## Force re-indexing
+
+To rebuild embeddings from scratch, ignoring the manifest:
+
+```bash
+docbot index --force
+docbot run "task" --force
+```
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Configuration overview" icon="gear" href="/configuration/overview">
+    Learn about all configuration options
+  </Card>
+  <Card title="Model configuration" icon="brain" href="/configuration/models">
+    Configure AI models for different tasks
+  </Card>
+</CardGroup>

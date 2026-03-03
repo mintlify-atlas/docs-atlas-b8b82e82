@@ -1,0 +1,515 @@
+---
+title: Blackboard
+description: Shared state management system for multi-agent coordination
+---
+
+The blackboard is a shared state management system that enables multiple agents to coordinate their work. It provides a centralized database for storing findings, plans, artifacts, and documentation targets throughout the documentation generation workflow.
+
+## Overview
+
+The blackboard uses SQLite for ephemeral session storage, creating a temporary database that doesn't persist across runs. Each session has a unique ID and tracks the complete workflow from research to writing.
+
+```typescript
+const blackboard = new Blackboard(dbPath?, sessionId?)
+```
+
+## Core concepts
+
+### Session workflow
+
+1. **Research phase**: Agents discover and record findings about the codebase
+2. **Planning phase**: Agents create documentation outlines referencing findings
+3. **Writing phase**: Agents generate content based on approved plans
+4. **Complete**: All documentation targets are written
+
+### Data types
+
+#### Finding
+
+A research finding summarizes discovered information about code, docs, APIs, or concepts.
+
+```typescript
+interface Finding {
+  id: string
+  sessionId: string
+  docTargetId?: string
+  type: 'code' | 'doc' | 'api' | 'concept'
+  filePath?: string
+  summary: string
+  relevanceScore?: number
+  metadata?: Record<string, unknown>
+}
+```
+
+#### DocTarget
+
+A documentation target represents a page or topic to be documented.
+
+```typescript
+interface DocTarget {
+  id: string
+  sessionId: string
+  name: string
+  description?: string
+  status: 'pending' | 'researching' | 'planning' | 'writing' | 'complete'
+  priority: number
+}
+```
+
+#### Plan
+
+A documentation plan with an outline of sections and their associated findings.
+
+```typescript
+interface Plan {
+  id: string
+  sessionId: string
+  docTargetId: string
+  title: string
+  outline: PlanOutline
+  approved: boolean
+  approvedAt?: Date
+}
+
+interface PlanOutline {
+  sections: PlanSectionOutline[]
+}
+
+interface PlanSectionOutline {
+  id: string
+  title: string
+  description?: string
+  findingIds: string[]  // References to findings
+  orderIndex: number
+}
+```
+
+#### Artifact
+
+Draft or final content produced during the writing phase.
+
+```typescript
+interface Artifact {
+  id: string
+  sessionId: string
+  planId?: string
+  sectionId?: string
+  type: 'draft' | 'final' | 'media_suggestion'
+  content?: string
+  filePath?: string
+  version: number
+  status: 'draft' | 'review' | 'approved' | 'written'
+}
+```
+
+## Blackboard tools
+
+Agents interact with the blackboard through specialized tools. All blackboard tools are created via `createBlackboardTools()`:
+
+```typescript
+const tools = createBlackboardTools(blackboard)
+```
+
+### Finding tools
+
+#### blackboard_write_finding
+
+Write a research finding to the blackboard. Findings are summaries with file paths - not full content.
+
+```typescript
+await tools.blackboard_write_finding.execute({
+  docTargetId: 'target-abc123',
+  type: 'code',
+  filePath: 'src/auth/login.ts',
+  summary: 'Login handler implements OAuth flow with Google and GitHub providers',
+  relevanceScore: 0.95,
+  metadata: {
+    providers: ['google', 'github'],
+    hasTests: true
+  }
+})
+
+// Returns: { findingId: 'finding-xyz789', summary: 'finding recorded' }
+```
+
+**Parameters:**
+- `type` (required): Finding type - 'code', 'doc', 'api', or 'concept'
+- `summary` (required): Summary of the finding
+- `docTargetId` (optional): Associated documentation target
+- `filePath` (optional): Source file path
+- `relevanceScore` (optional): Relevance score 0-1
+- `metadata` (optional): Additional metadata
+
+#### blackboard_read_finding
+
+Read a specific finding by ID.
+
+```typescript
+const finding = await tools.blackboard_read_finding.execute({
+  findingId: 'finding-xyz789'
+})
+
+// Returns: { id, type, filePath, summary, relevanceScore, metadata }
+```
+
+#### blackboard_read_findings
+
+Read all findings for a documentation target.
+
+```typescript
+const result = await tools.blackboard_read_findings.execute({
+  docTargetId: 'target-abc123'
+})
+
+// Returns: { count: 5, findings: [...] }
+```
+
+### Plan tools
+
+#### blackboard_write_plan
+
+Write a documentation plan to the blackboard. Includes outline with sections and finding references.
+
+```typescript
+await tools.blackboard_write_plan.execute({
+  docTargetId: 'target-abc123',
+  title: 'Authentication Guide',
+  outline: {
+    sections: [
+      {
+        id: 'overview',
+        title: 'Overview',
+        description: 'Introduction to authentication',
+        findingIds: ['finding-xyz789', 'finding-abc456'],
+        orderIndex: 0
+      },
+      {
+        id: 'oauth-setup',
+        title: 'OAuth setup',
+        description: 'Configure OAuth providers',
+        findingIds: ['finding-def789'],
+        orderIndex: 1
+      }
+    ]
+  }
+})
+
+// Returns: { planId: 'plan-abc123', sectionCount: 2, title: 'Authentication Guide' }
+```
+
+**Parameters:**
+- `docTargetId` (required): Associated documentation target
+- `title` (required): Plan title
+- `outline` (required): Plan outline with sections
+
+#### blackboard_read_plan
+
+Read a specific plan by ID.
+
+```typescript
+const plan = await tools.blackboard_read_plan.execute({
+  planId: 'plan-abc123'
+})
+
+// Returns: { id, docTargetId, title, outline, approved }
+```
+
+### Artifact tools
+
+#### blackboard_write_artifact
+
+Write an artifact (draft or final content) to the blackboard.
+
+```typescript
+await tools.blackboard_write_artifact.execute({
+  planId: 'plan-abc123',
+  sectionId: 'overview',
+  type: 'draft',
+  content: '## Overview\n\nThis guide covers...',
+  status: 'draft'
+})
+
+// Returns: { artifactId: 'artifact-xyz789', type: 'draft', status: 'draft' }
+```
+
+**Parameters:**
+- `type` (required): Artifact type - 'draft', 'final', or 'media_suggestion'
+- `planId` (optional): Associated plan ID
+- `sectionId` (optional): Associated section ID
+- `content` (optional): Content of the artifact
+- `filePath` (optional): File path for the artifact
+- `status` (optional, default: 'draft'): Status - 'draft', 'review', 'approved', or 'written'
+
+#### blackboard_read_artifact
+
+Read a specific artifact by ID.
+
+```typescript
+const artifact = await tools.blackboard_read_artifact.execute({
+  artifactId: 'artifact-xyz789'
+})
+
+// Returns: { id, type, content, filePath, status, version }
+```
+
+### Completion tools
+
+These tools mark different phases as complete and advance the workflow.
+
+#### mark_research_complete
+
+Mark research phase as complete. Call this when you've finished researching and recorded all findings.
+
+```typescript
+await tools.mark_research_complete.execute({
+  docTargetId: 'target-abc123',
+  summary: 'Found 12 relevant files covering authentication flow'
+})
+
+// Returns: { completed: true, docTargetId, message }
+```
+
+This updates the doc target status to 'planning'.
+
+#### submit_plan
+
+Submit a plan for approval. Call this when you've created a documentation plan and it's ready for review.
+
+```typescript
+await tools.submit_plan.execute({
+  planId: 'plan-abc123',
+  summary: 'Created 5-section outline for authentication guide'
+})
+
+// Returns: { submitted: true, planId, message }
+```
+
+This updates the doc target status to 'writing'.
+
+#### mark_writing_complete
+
+Mark writing phase as complete. Call this when you've finished writing all sections for a plan.
+
+```typescript
+await tools.mark_writing_complete.execute({
+  planId: 'plan-abc123',
+  summary: 'Completed all 5 sections'
+})
+
+// Returns: { completed: true, planId, message }
+```
+
+This updates the doc target status to 'complete'.
+
+#### mark_interaction_complete
+
+Mark user interaction as complete. Call this after presenting info to user or getting their response.
+
+```typescript
+await tools.mark_interaction_complete.execute({
+  response: 'User approved the plan',
+  approved: true
+})
+
+// Returns: { completed: true, approved, message, response }
+```
+
+## Blackboard methods
+
+The `Blackboard` class provides direct methods for managing state. These are typically called by the blackboard tools rather than directly by agents.
+
+### Finding methods
+
+```typescript
+// Add a finding
+const findingId = blackboard.addFinding({
+  type: 'code',
+  summary: 'Login implementation',
+  filePath: 'src/auth/login.ts',
+  docTargetId: 'target-abc123',
+  relevanceScore: 0.95
+})
+
+// Get a finding
+const finding = blackboard.getFinding(findingId)
+
+// Get all findings for a target
+const findings = blackboard.getFindingsForTarget('target-abc123')
+
+// Count findings for a target
+const count = blackboard.countFindingsForTarget('target-abc123')
+```
+
+### DocTarget methods
+
+```typescript
+// Add a doc target
+const targetId = blackboard.addDocTarget({
+  name: 'Authentication Guide',
+  description: 'User authentication documentation',
+  status: 'researching',
+  priority: 1
+})
+
+// Get a doc target
+const target = blackboard.getDocTarget(targetId)
+
+// Get all doc targets
+const targets = blackboard.getDocTargets()
+
+// Update status
+blackboard.updateDocTargetStatus(targetId, 'planning')
+```
+
+### Plan methods
+
+```typescript
+// Add a plan
+const planId = blackboard.addPlan({
+  docTargetId: 'target-abc123',
+  title: 'Authentication Guide',
+  outline: { sections: [...] },
+  approved: false
+})
+
+// Get a plan
+const plan = blackboard.getPlan(planId)
+
+// Get latest plan for a target
+const latestPlan = blackboard.getLatestPlan('target-abc123')
+
+// Approve a plan
+blackboard.approvePlan(planId)
+```
+
+### Artifact methods
+
+```typescript
+// Add an artifact
+const artifactId = blackboard.addArtifact({
+  planId: 'plan-abc123',
+  sectionId: 'overview',
+  type: 'draft',
+  content: '## Overview...',
+  version: 1,
+  status: 'draft'
+})
+
+// Get an artifact
+const artifact = blackboard.getArtifact(artifactId)
+
+// Get artifacts by plan
+const artifacts = blackboard.getArtifactsByPlanId('plan-abc123')
+
+// Update artifact
+blackboard.updateArtifact(artifactId, {
+  content: 'Updated content...',
+  status: 'review',
+  version: 2
+})
+```
+
+### Session methods
+
+```typescript
+// Get session summary
+const summary = blackboard.getSessionSummary()
+
+// Returns:
+{
+  sessionId: string
+  docTargets: Array<{ id, name, status }>
+  totalFindings: number
+  totalPlans: number
+  totalArtifacts: number
+  currentPhase: string  // 'research', 'planning', 'writing', 'complete'
+}
+
+// Close database connection
+blackboard.close()
+```
+
+## Usage patterns
+
+### Research agent pattern
+
+```typescript
+// 1. Research the codebase
+const searchResults = await codebaseTools.semantic_code_search.execute({
+  query: 'authentication implementation'
+})
+
+// 2. Record findings
+for (const result of searchResults) {
+  await blackboardTools.blackboard_write_finding.execute({
+    docTargetId: targetId,
+    type: 'code',
+    filePath: result.path,
+    summary: result.summary,
+    relevanceScore: result.score
+  })
+}
+
+// 3. Mark research complete
+await blackboardTools.mark_research_complete.execute({
+  docTargetId: targetId
+})
+```
+
+### Planning agent pattern
+
+```typescript
+// 1. Read all findings
+const { findings } = await blackboardTools.blackboard_read_findings.execute({
+  docTargetId: targetId
+})
+
+// 2. Create plan outline
+await blackboardTools.blackboard_write_plan.execute({
+  docTargetId: targetId,
+  title: 'Authentication Guide',
+  outline: {
+    sections: findings.map((f, i) => ({
+      id: `section-${i}`,
+      title: f.summary,
+      findingIds: [f.id],
+      orderIndex: i
+    }))
+  }
+})
+
+// 3. Submit for approval
+await blackboardTools.submit_plan.execute({ planId })
+```
+
+### Writing agent pattern
+
+```typescript
+// 1. Read the plan
+const plan = await blackboardTools.blackboard_read_plan.execute({ planId })
+
+// 2. Write each section
+for (const section of plan.outline.sections) {
+  // Get findings for this section
+  const findings = await Promise.all(
+    section.findingIds.map(id => 
+      blackboardTools.blackboard_read_finding.execute({ findingId: id })
+    )
+  )
+  
+  // Generate content
+  const content = await generateSectionContent(section, findings)
+  
+  // Write artifact
+  await blackboardTools.blackboard_write_artifact.execute({
+    planId,
+    sectionId: section.id,
+    type: 'draft',
+    content,
+    status: 'draft'
+  })
+}
+
+// 3. Mark writing complete
+await blackboardTools.mark_writing_complete.execute({ planId })
+```

@@ -1,0 +1,342 @@
+---
+title: Workflow
+description: How Docbot moves through analysis, planning, execution, and review phases
+---
+
+Docbot follows a structured workflow that breaks documentation work into discrete phases. Each phase has specific goals and produces trackable artifacts stored in the blackboard.
+
+## Workflow phases
+
+Every documentation session progresses through four phases:
+
+<Steps>
+  <Step title="Analysis">
+    Research what needs to be documented by searching docs and code
+  </Step>
+  <Step title="Planning">
+    Create a structured outline mapping sections to research findings
+  </Step>
+  <Step title="Execution">
+    Write or update documentation files based on the approved plan
+  </Step>
+  <Step title="Review">
+    Verify completeness and mark the session as finished
+  </Step>
+</Steps>
+
+The orchestrator coordinates these phases by delegating to specialized agents and tracking progress through the blackboard.
+
+## Phase 1: Analysis
+
+The research agent discovers what exists in your codebase and documentation:
+
+### How research works
+
+<Steps>
+  <Step title="Parse the request">
+    The orchestrator creates doc targets from your task (e.g., "document the settings page" → one doc target)
+  </Step>
+  <Step title="Delegate to research agent">
+    The orchestrator calls `delegate_research` with the doc target ID and a query
+  </Step>
+  <Step title="Execute searches">
+    The research agent performs 5-8 targeted searches across code and docs
+  </Step>
+  <Step title="Record findings">
+    Each useful result is written to the blackboard with a relevance score
+  </Step>
+  <Step title="Mark complete">
+    The agent calls `mark_research_complete` to signal it's done
+  </Step>
+</Steps>
+
+### Types of findings
+
+Findings are tagged by type to help downstream agents understand what they represent:
+
+- **code**: Functions, classes, types, or other symbols from the codebase
+- **doc**: Existing documentation pages or sections
+- **api**: API endpoints, routes, or interfaces
+- **concept**: High-level ideas or architectural patterns
+
+Each finding includes:
+
+```typescript
+interface Finding {
+  id: string              // e.g., "finding-a3f2b1c4"
+  docTargetId: string     // links to the doc target this supports
+  type: 'code' | 'doc' | 'api' | 'concept'
+  filePath?: string       // where this was found
+  summary: string         // user-facing description of what this is
+  relevanceScore: number  // 0-1, how relevant to the doc target
+}
+```
+
+<Info>
+The research agent is explicitly told to perform 5-8 searches and then stop. This prevents over-researching and keeps token costs predictable.
+</Info>
+
+## Phase 2: Planning
+
+The planner agent creates a structured outline from research findings:
+
+### How planning works
+
+<Steps>
+  <Step title="Read findings">
+    The planner calls `blackboard_read_findings` to get all findings for a doc target
+  </Step>
+  <Step title="Analyze navigation">
+    The planner calls `read_nav` to understand existing doc structure (groups, pages, ordering)
+  </Step>
+  <Step title="Create outline">
+    The planner organizes content into sections, mapping finding IDs to each section
+  </Step>
+  <Step title="Write plan">
+    The plan is written to the blackboard with `blackboard_write_plan`
+  </Step>
+  <Step title="Submit for approval">
+    The planner calls `submit_plan` to hand control back to the orchestrator
+  </Step>
+</Steps>
+
+### Plan structure
+
+A plan contains a title, outline, and metadata:
+
+```typescript
+interface Plan {
+  id: string
+  docTargetId: string
+  title: string           // e.g., "Settings page documentation"
+  outline: {
+    sections: Array<{
+      id: string          // e.g., "section-1"
+      title: string       // e.g., "Accessing settings"
+      description?: string
+      findingIds: string[] // which findings support this section
+      orderIndex: number   // section ordering
+    }>
+  }
+  approved: boolean
+}
+```
+
+The planner follows specific principles:
+
+- **Reorganize over add**: If docs are messy, consolidate rather than creating new pages
+- **Update over create**: Prefer updating existing docs to creating new ones
+- **Consolidate over duplicate**: Merge similar content rather than splitting it
+- **Delete ruthlessly**: Remove outdated or overly technical sections
+
+### Interactive approval
+
+By default, Docbot runs in interactive mode. After planning:
+
+1. The orchestrator delegates to the user interaction agent
+2. The user agent formats the plan and calls `ask_user` for approval
+3. You see the plan in the TUI and can approve or reject it
+4. If approved, the orchestrator marks the plan as approved in the blackboard
+
+You can skip approval with `--interactive=false`, which auto-approves all plans.
+
+## Phase 3: Execution
+
+The writer agent generates documentation from the approved plan:
+
+### How writing works
+
+<Steps>
+  <Step title="Read the plan">
+    The writer calls `blackboard_read_plan` to get the full outline
+  </Step>
+  <Step title="For each section">
+    The writer processes sections in order, reading findings and source files
+  </Step>
+  <Step title="Read source content">
+    The writer calls `read_file` or `read_doc` to get file contents for context
+  </Step>
+  <Step title="Write documentation">
+    The writer calls `create_doc` or `update_doc` with well-structured MDX content
+  </Step>
+  <Step title="Record artifacts">
+    Each created/updated file is stored as an artifact with `blackboard_write_artifact`
+  </Step>
+  <Step title="Mark complete">
+    After all sections are written, the writer calls `mark_writing_complete`
+  </Step>
+</Steps>
+
+### Content structure
+
+The writer agent is trained to write for non-technical users:
+
+- Focus on what users can do, not implementation details
+- Use Mintlify components (`<Steps>`, `<Tabs>`, `<Accordion>`) for structure
+- Avoid jargon, marketing speak, and filler phrases
+- Write concise, scannable content with clear headings
+
+<Accordion title="Example: Writer output for a settings page">
+```mdx
+---
+title: Settings
+description: Configure your workspace preferences and account settings
+---
+
+You can customize your workspace behavior through the settings page.
+
+## Accessing settings
+
+<Steps>
+  <Step title="Open the settings menu">
+    Click your profile icon in the top right corner
+  </Step>
+  <Step title="Select settings">
+    Choose "Settings" from the dropdown menu
+  </Step>
+</Steps>
+
+## Available settings
+
+<Tabs>
+  <Tab title="General">
+    Control workspace name, language, and timezone preferences.
+  </Tab>
+  <Tab title="Notifications">
+    Manage email and in-app notification preferences.
+  </Tab>
+  <Tab title="Security">
+    Set up two-factor authentication and manage sessions.
+  </Tab>
+</Tabs>
+```
+</Accordion>
+
+### Artifact tracking
+
+Every file written becomes an artifact in the blackboard:
+
+```typescript
+interface Artifact {
+  id: string
+  planId: string          // which plan this fulfills
+  sectionId?: string      // which section (if applicable)
+  type: 'draft' | 'final' | 'media_suggestion'
+  content?: string        // the actual MDX content
+  filePath?: string       // where it was written
+  version: number         // version tracking
+  status: 'draft' | 'review' | 'approved' | 'written'
+}
+```
+
+This lets you track what was created, when, and which plan it came from.
+
+## Phase 4: Review
+
+The orchestrator verifies all work is complete:
+
+<Steps>
+  <Step title="Check doc targets">
+    The orchestrator reads the session summary to see if all targets are marked "complete"
+  </Step>
+  <Step title="Verify artifacts">
+    Confirm that artifacts were created for each planned section
+  </Step>
+  <Step title="Finish session">
+    Call `finish_session` with a summary of what was accomplished
+  </Step>
+</Steps>
+
+The session summary shows final stats:
+
+```bash
+Session complete:
+- 1 doc target (complete)
+- 12 findings
+- 1 plan (approved)
+- 3 artifacts (written)
+```
+
+## Session state awareness
+
+The orchestrator injects session state into every decision to prevent redundant work:
+
+```typescript
+// Injected before each orchestrator step
+[SESSION STATE]
+phase: planning
+findings: 12
+plans: 0
+artifacts: 0
+targets:
+  - settings-page: researching
+[/SESSION STATE]
+```
+
+This context helps the orchestrator decide:
+
+- Skip research if findings already exist for simple edits
+- Skip planning if an approved plan exists
+- Proceed directly to writing for minor tweaks
+- Avoid creating duplicate doc targets
+
+<Warning>
+If session state shows all targets are complete but the orchestrator hasn't called `finish_session`, it receives a warning: "🛑 ALL TARGETS COMPLETE - call finish_session NOW". This prevents cycling.
+</Warning>
+
+## Handling errors and retries
+
+Each agent has a `maxRetries` setting that controls how many times it will retry a failed operation:
+
+```jsonc
+{
+  "agents": {
+    "runtime": {
+      "orchestrator": { "maxRetries": 3 },
+      "research": { "maxRetries": 2 },
+      "planner": { "maxRetries": 2 },
+      "writer": { "maxRetries": 2 }
+    }
+  }
+}
+```
+
+If a tool call fails, the agent receives the error and can try a different approach. If retries are exhausted, the error bubbles up to the orchestrator, which can delegate to a different agent or skip that doc target.
+
+## Workflow variations
+
+### Simple edits
+
+For straightforward requests like "fix the typo on the intro page", Docbot shortcuts the workflow:
+
+- Orchestrator checks session state (no prior findings)
+- Creates a doc target
+- Skips research (or does minimal doc search)
+- Skips planning (or creates a trivial one-section plan)
+- Delegates directly to the writer
+
+This prevents over-engineering simple tasks.
+
+### Multi-target sessions
+
+If your request involves multiple documentation goals, the orchestrator creates multiple doc targets:
+
+```bash
+docbot run "document the settings page and the notifications feature"
+# Creates:
+# - target-1: "settings page documentation"
+# - target-2: "notifications feature documentation"
+```
+
+Each target goes through research → planning → writing independently. The orchestrator handles them in priority order.
+
+### Iterative refinement
+
+If you run Docbot again in the same session (e.g., after rejecting a plan), it reuses existing findings:
+
+- Findings persist in the blackboard
+- New plan is created from the same findings
+- You approve the revised plan
+- Writing proceeds as normal
+
+This avoids re-researching on every iteration.

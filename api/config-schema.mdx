@@ -1,0 +1,280 @@
+---
+title: DocbotConfig schema
+description: Zod schema and TypeScript types for Docbot configuration
+---
+
+## Overview
+
+The `docbotConfigSchema` is the Zod schema that validates user configuration files. Users typically provide a partial configuration (`DocbotUserConfig`) which is merged with defaults to create a `ResolvedConfig`.
+
+## Import
+
+```typescript
+import { docbotConfigSchema, defineConfig } from "docbot/config"
+import type { DocbotConfig, DocbotUserConfig } from "docbot/config"
+```
+
+## DocbotConfig
+
+The inferred TypeScript type from the Zod schema. All fields are optional.
+
+```typescript
+type DocbotConfig = z.infer<typeof docbotConfigSchema>
+```
+
+### Configuration fields
+
+<ParamField path="agents" type="object" optional>
+  Agent behavior settings
+  
+  <Expandable title="properties">
+    <ResponseField name="discoveryBudget" type="number" optional>
+      Maximum number of discovery iterations for file exploration. Must be a positive integer.
+      
+      Default: `6`
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="models" type="object" optional>
+  Model overrides for different AI operations. All model IDs must follow the format `provider/model-name`.
+  
+  <Expandable title="properties">
+    <ResponseField name="context" type="string" optional>
+      Model for long-context analysis operations.
+      
+      Default: `"google/gemini-3-pro-preview"`
+    </ResponseField>
+    
+    <ResponseField name="embedding" type="string" optional>
+      Model for generating embeddings for semantic search.
+      
+      Default: `"openai/text-embedding-3-small"`
+    </ResponseField>
+    
+    <ResponseField name="embeddingLarge" type="string" optional>
+      Model for generating high-quality embeddings.
+      
+      Default: `"openai/text-embedding-3-large"`
+    </ResponseField>
+    
+    <ResponseField name="fast" type="string" optional>
+      Fast model for quick operations.
+      
+      Default: `"openai/gpt-5.2"`
+    </ResponseField>
+    
+    <ResponseField name="nano" type="string" optional>
+      Lightweight model for simple tasks.
+      
+      Default: `"google/gemini-3-flash"`
+    </ResponseField>
+    
+    <ResponseField name="planning" type="string" optional>
+      Model for planning and orchestration.
+      
+      Default: `"openai/gpt-5.2"`
+    </ResponseField>
+    
+    <ResponseField name="planningHeavy" type="string" optional>
+      Model for complex planning tasks.
+      
+      Default: `"anthropic/claude-opus-4.5"`
+    </ResponseField>
+    
+    <ResponseField name="prose" type="string" optional>
+      Model for generating documentation content.
+      
+      Default: `"anthropic/claude-sonnet-4.5"`
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="paths" type="object" optional>
+  Default paths for CLI inputs
+  
+  <Expandable title="properties">
+    <ResponseField name="codebase" type="string | string[]" optional>
+      Path(s) to the codebase to document. Can be a single path or array of paths.
+    </ResponseField>
+    
+    <ResponseField name="docs" type="string" optional>
+      Path to the documentation output directory.
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="projectSlug" type="string" optional>
+  Project identifier used for collection naming. Must be lowercase alphanumeric with hyphens.
+  
+  Defaults to sanitized `package.json` name.
+</ParamField>
+
+<ParamField path="qdrant" type="object" optional>
+  Qdrant vector database configuration
+  
+  <Expandable title="properties">
+    <ResponseField name="url" type="string">
+      Qdrant server URL. Must be a valid URL.
+      
+      Default: `"http://127.0.0.1:6333"`
+    </ResponseField>
+    
+    <ResponseField name="manifestPath" type="string" optional>
+      Custom manifest path for tracking indexed files.
+      
+      Default: `".docbot/manifest.json"`
+    </ResponseField>
+    
+    <ResponseField name="collections" type="object" optional>
+      Custom collection names for vector storage
+      
+      <Expandable title="properties">
+        <ResponseField name="code" type="string" required>
+          Collection name for code embeddings.
+          
+          Default: `docbot_{projectSlug}_code`
+        </ResponseField>
+        
+        <ResponseField name="docs" type="string" required>
+          Collection name for documentation embeddings.
+          
+          Default: `docbot_{projectSlug}_docs`
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="server" type="object" optional>
+  Server configuration settings
+  
+  <Expandable title="properties">
+    <ResponseField name="port" type="number" optional>
+      Port number for the development server. Must be between 1 and 65535.
+      
+      Default: `3070`
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+## DocbotUserConfig
+
+Type alias for the input type accepted by the Zod schema. This is what users provide in their `docbot.config.ts` files.
+
+```typescript
+type DocbotUserConfig = z.input<typeof docbotConfigSchema>
+```
+
+## Usage examples
+
+### Basic configuration
+
+```typescript
+import { defineConfig } from "docbot/config"
+
+export default defineConfig({
+  projectSlug: "my-project",
+  models: {
+    planning: "openai/gpt-4o",
+    prose: "anthropic/claude-sonnet-4.5",
+  },
+})
+```
+
+### With custom Qdrant settings
+
+```typescript
+import { defineConfig } from "docbot/config"
+
+export default defineConfig({
+  projectSlug: "my-api",
+  qdrant: {
+    url: "http://localhost:6333",
+    collections: {
+      code: "custom_code_collection",
+      docs: "custom_docs_collection",
+    },
+  },
+})
+```
+
+### With path defaults
+
+```typescript
+import { defineConfig } from "docbot/config"
+
+export default defineConfig({
+  paths: {
+    codebase: ["./src", "./lib"],
+    docs: "./documentation",
+  },
+  agents: {
+    discoveryBudget: 10,
+  },
+})
+```
+
+### Programmatic validation
+
+```typescript
+import { docbotConfigSchema } from "docbot/config"
+
+const userConfig = {
+  projectSlug: "test",
+  models: {
+    planning: "openai/gpt-4o",
+  },
+}
+
+// Validate config
+const result = docbotConfigSchema.safeParse(userConfig)
+
+if (result.success) {
+  console.log("Valid config:", result.data)
+} else {
+  console.error("Invalid config:", result.error)
+}
+```
+
+## Model ID format
+
+All model identifiers must follow the format `provider/model-name`:
+
+- Provider: alphanumeric with hyphens (e.g., `openai`, `anthropic`, `google`)
+- Model name: alphanumeric with hyphens and dots (e.g., `gpt-5.2`, `claude-sonnet-4.5`)
+
+```typescript
+// Valid model IDs
+"openai/gpt-5.2"
+"anthropic/claude-sonnet-4.5"
+"google/gemini-3-flash"
+
+// Invalid model IDs
+"gpt-5.2"  // Missing provider
+"openai:gpt-5.2"  // Wrong separator
+```
+
+## Helper functions
+
+### defineConfig
+
+Provides TypeScript type hints for configuration objects:
+
+```typescript
+function defineConfig(config: DocbotUserConfig): DocbotUserConfig
+```
+
+### gateway
+
+Re-exported from the `ai` package for model configuration:
+
+```typescript
+import { defineConfig, gateway } from "docbot/config"
+
+export default defineConfig({
+  models: {
+    planning: gateway("openai/gpt-4o"),
+  },
+})
+```

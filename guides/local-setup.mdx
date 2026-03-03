@@ -1,0 +1,206 @@
+---
+title: Local development setup
+description: Complete guide to setting up Docbot for local development
+---
+
+This guide walks you through setting up Docbot locally from installation to running your first documentation task.
+
+## Prerequisites
+
+Before installing Docbot, ensure you have the following tools installed:
+
+- **[Bun](https://bun.sh)** - Required runtime (will not change)
+- **[Docker](https://www.docker.com/get-started)** - For running Qdrant locally
+- **ripgrep (`rg`)** - For fast exact-match search
+- **AI Gateway API key** - Vercel AI Gateway access
+
+<Note>
+You can check if ripgrep is installed by running `rg --version` in your terminal.
+</Note>
+
+## Installation
+
+<Steps>
+
+<Step title="Install Docbot">
+
+You can run Docbot directly with `bunx` without installing globally:
+
+```bash
+bunx @helmlabs/docbot --help
+```
+
+Or install globally for easier access:
+
+```bash
+bun add -g @helmlabs/docbot
+docbot --help
+```
+
+</Step>
+
+<Step title="Set up environment variables">
+
+Create a `.env` file in your project root and add your AI Gateway API key:
+
+```bash
+AI_GATEWAY_API_KEY=your_api_key_here
+```
+
+<Warning>
+Never commit your `.env` file to version control. Add it to `.gitignore` immediately.
+</Warning>
+
+</Step>
+
+<Step title="Initialize Docbot in your project">
+
+Navigate to your project directory and run the initialization command:
+
+```bash
+bunx @helmlabs/docbot init
+```
+
+This command will:
+- Create a `.docbot/` directory for cache and local state
+- Generate `docbot.config.jsonc` with default configuration
+- Add `.docbot/` to your `.gitignore`
+- Check for Docker and attempt to start Qdrant automatically
+
+<Tip>
+Use `--force` to overwrite existing configuration, or `--skip-docker` if you're setting up Qdrant manually.
+</Tip>
+
+</Step>
+
+<Step title="Configure your project paths">
+
+Edit `docbot.config.jsonc` to specify your documentation and codebase paths:
+
+```jsonc
+{
+  "projectSlug": "my-project",
+  "paths": {
+    "docs": "./docs",
+    "codebase": ["./src", "./packages/shared"]
+  },
+  "qdrant": {
+    "url": "http://127.0.0.1:6333",
+    "collections": {
+      "docs": "docbot_my-project_docs",
+      "code": "docbot_my-project_code"
+    }
+  }
+}
+```
+
+<Note>
+The `codebase` field accepts either a single string or an array of paths for monorepo support.
+</Note>
+
+</Step>
+
+<Step title="Start Qdrant (if not auto-started)">
+
+If Qdrant wasn't automatically started during initialization, start it manually:
+
+```bash
+docker run --rm -p 6333:6333 -v "$(pwd)/.docbot/qdrant_storage:/qdrant/storage" qdrant/qdrant
+```
+
+Verify Qdrant is running by checking the health endpoint:
+
+```bash
+curl http://127.0.0.1:6333/health
+```
+
+You should receive a response indicating the service is healthy.
+
+</Step>
+
+<Step title="Index your documentation and codebase">
+
+Build the search index from your docs and code:
+
+```bash
+bunx @helmlabs/docbot index
+```
+
+This command will:
+- Read all documentation files from your docs path
+- Parse and chunk code from your codebase paths
+- Generate embeddings using the configured model
+- Store vectors in Qdrant collections
+
+<Warning>
+Indexing can take 5-10 minutes depending on the size of your codebase and documentation. This is a one-time operation unless you use `--force` to rebuild.
+</Warning>
+
+</Step>
+
+<Step title="Run your first task">
+
+Once indexing is complete, run Docbot with a documentation task:
+
+```bash
+bunx @helmlabs/docbot run "document the authentication flow"
+```
+
+Docbot will:
+1. Analyze your docs and codebase
+2. Propose a structured plan
+3. Wait for your approval
+4. Execute the changes
+5. Present a review
+
+</Step>
+
+</Steps>
+
+## Verify your setup
+
+Test that everything is working correctly:
+
+```bash
+# Test search functionality
+bunx @helmlabs/docbot search "authentication" --type hybrid --limit 5
+
+# Check Qdrant collections
+curl http://127.0.0.1:6333/collections
+```
+
+## Next steps
+
+- Learn about [Docker and Qdrant setup](/guides/docker-qdrant)
+- Configure [custom AI models](/guides/custom-models)
+- Review [troubleshooting tips](/guides/troubleshooting) if you encounter issues
+
+## Common setup options
+
+### Running without the TUI
+
+If you prefer to run the server without the terminal UI:
+
+```bash
+bunx @helmlabs/docbot serve --port 3070
+```
+
+### Using a remote Qdrant instance
+
+Update your `docbot.config.jsonc` to point to a remote instance:
+
+```jsonc
+{
+  "qdrant": {
+    "url": "https://your-qdrant-instance.com"
+  }
+}
+```
+
+### Force re-indexing
+
+To rebuild your index from scratch:
+
+```bash
+bunx @helmlabs/docbot index --force
+```

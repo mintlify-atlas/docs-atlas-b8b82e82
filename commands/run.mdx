@@ -1,0 +1,384 @@
+---
+title: docbot run
+description: Run the documentation agent with interactive UI and task execution
+---
+
+The `docbot run` command launches the full Docbot agent with an interactive terminal UI. It handles indexing, starts the server, and executes documentation tasks using AI-powered planning and tool execution.
+
+## Basic usage
+
+```bash
+docbot run "Add a quickstart guide for new users"
+```
+
+This command will:
+
+1. Index documentation and codebase (if not up to date)
+2. Start the Docbot server on port 3070 (by default)
+3. Launch the interactive UI
+4. Execute your task with plan approval
+
+<Note>
+If you omit the task argument, Docbot starts in idle mode. You can submit tasks through the web UI at `http://localhost:3070`.
+</Note>
+
+## Options
+
+<ParamField path="task" type="string" positional>
+  The documentation task to perform. Optional - starts in idle mode if omitted.
+  
+  Examples:
+  - `"Add a troubleshooting section to the API docs"`
+  - `"Update the installation guide with Docker instructions"`
+  - `"Fix broken links in the getting started page"`
+</ParamField>
+
+<ParamField path="--docs" type="string" required={false}>
+  Path to the documentation directory. Can also be set via `paths.docs` in your config file.
+</ParamField>
+
+<ParamField path="--codebase" type="string">
+  Comma-separated paths or globs to codebase directories. Falls back to `paths.codebase` in your config file.
+  
+  Examples: `apps/helm,packages/*` or `src/**`
+</ParamField>
+
+<ParamField path="--config" type="string">
+  Path to docbot config file. Defaults to `docbot.config.jsonc` in your project root.
+  
+  **Alias:** `-c`
+</ParamField>
+
+<ParamField path="--interactive" type="boolean" default={true}>
+  Run in interactive mode with plan approval. When true, Docbot shows you the plan and waits for approval before making changes.
+  
+  Set to `false` for fully autonomous execution (use with caution).
+</ParamField>
+
+<ParamField path="--port" type="number">
+  Server port. Overrides the port in your config file.
+  
+  **Default:** `3070`
+</ParamField>
+
+<ParamField path="--qdrant-url" type="string">
+  Qdrant server URL. Overrides the URL in your config file.
+  
+  **Default:** `http://127.0.0.1:6333`
+</ParamField>
+
+<ParamField path="--index-only" type="boolean" default={false}>
+  Only index the docs, don't run the agent. Equivalent to running `docbot index` but uses the same configuration.
+</ParamField>
+
+<ParamField path="--verbose" type="boolean" default={false}>
+  Show detailed logging of tool calls, commands, and timings. Starts a log server on port 3071 for real-time log viewing.
+  
+  **Alias:** `-v`
+</ParamField>
+
+<ParamField path="--no-server" type="boolean" default={false}>
+  Don't start the server (connect to existing server instead). Use this when you already have a Docbot server running.
+  
+  **Alias:** `-ns`
+</ParamField>
+
+<ParamField path="--force" type="boolean" default={false}>
+  Force full re-index, ignoring the manifest. Re-creates embeddings for all files even if they haven't changed.
+  
+  **Alias:** `-f`
+</ParamField>
+
+## Examples
+
+<CodeGroup>
+
+```bash Run with task
+docbot run "Add API reference for the search endpoint"
+```
+
+```bash Start in idle mode
+docbot run
+```
+
+```bash Non-interactive mode
+docbot run "Update changelog" --interactive=false
+```
+
+```bash With verbose logging
+docbot run "Fix typos in overview" --verbose
+```
+
+```bash Index only
+docbot run --index-only --docs ./docs --codebase ./src
+```
+
+```bash Custom port
+docbot run --port 8080
+```
+
+```bash Connect to existing server
+docbot run "Add examples" --no-server --port 3070
+```
+
+```bash Force re-index before run
+docbot run "Update docs" --force
+```
+
+</CodeGroup>
+
+## Interactive UI
+
+When you run Docbot, you'll see an interactive terminal UI with:
+
+### Status header
+
+Shows:
+- Current task
+- Indexing stats (files scanned, chunks synced)
+- Server URL and port
+- Docs and codebase paths
+
+### Task execution panel
+
+Displays:
+- Planning phase output
+- Tool executions
+- File operations
+- Agent reasoning
+
+### Plan approval
+
+In interactive mode, Docbot shows you the plan and waits for approval:
+
+```
+📋 Plan:
+
+1. Read existing API docs
+2. Extract search endpoint signature from codebase
+3. Write new API reference section
+4. Update navigation in docs.json
+
+Approve this plan? [y/n]
+```
+
+Press `y` to proceed or `n` to cancel.
+
+<Warning>
+Setting `--interactive=false` bypasses plan approval and makes Docbot fully autonomous. Always review the task carefully before using non-interactive mode.
+</Warning>
+
+## Indexing phase
+
+Before running your task, Docbot performs incremental indexing:
+
+```
+initializing docbot...
+  docs: /path/to/docs
+  project: my-project
+  codebase paths:
+    - /path/to/src
+connecting to qdrant...
+scanning documentation...
+  docs: 2 new, 1 changed, 0 removed, 42 unchanged (scanned in 0.3s)
+syncing documentation embeddings...
+  ✓ synced 12 chunks
+scanning codebase...
+  code: 128 files unchanged (scanned in 0.4s)
+```
+
+The UI then launches and displays the indexing stats in the header.
+
+<Tip>
+If your docs are already up to date, the indexing phase completes in seconds. Use `--force` only when you need to rebuild all embeddings.
+</Tip>
+
+## Server component
+
+Docbot runs a local HTTP server that provides:
+
+- **REST API** - For task submission and status queries
+- **WebSocket** - For real-time agent output streaming
+- **Web UI** - Browser-based interface at `http://localhost:3070`
+
+The server runs in the background while the terminal UI is active.
+
+### Connecting to existing server
+
+If you want to run multiple Docbot instances:
+
+```bash
+# Terminal 1: Start server in idle mode
+docbot run --no-server=false
+
+# Terminal 2: Connect to existing server
+docbot run "Task 1" --no-server --port 3070
+
+# Terminal 3: Connect to existing server
+docbot run "Task 2" --no-server --port 3070
+```
+
+## Verbose mode
+
+Enable verbose logging to see detailed execution:
+
+```bash
+docbot run "Add examples" --verbose
+```
+
+This:
+- Shows all tool calls (read, write, search, etc.)
+- Logs command executions and outputs
+- Displays timing information
+- Starts a log server on port 3071
+
+View logs in your browser at `http://localhost:3071`.
+
+## Configuration
+
+Set defaults in `docbot.config.jsonc`:
+
+```json
+{
+  "projectSlug": "my-project",
+  "paths": {
+    "docs": "./docs",
+    "codebase": ["./src"]
+  },
+  "server": {
+    "port": 3070
+  },
+  "qdrant": {
+    "url": "http://127.0.0.1:6333",
+    "collections": {
+      "docs": "my-project-docs",
+      "code": "my-project-code"
+    }
+  },
+  "models": {
+    "planning": "openai/gpt-5.2",
+    "prose": "anthropic/claude-sonnet-4.5",
+    "fast": "anthropic/claude-haiku-4.5"
+  }
+}
+```
+
+Then run with minimal flags:
+
+```bash
+docbot run "Your task"
+```
+
+## Task examples
+
+Docbot can handle a wide variety of documentation tasks:
+
+### Content creation
+
+```bash
+docbot run "Add a quickstart guide for new users"
+docbot run "Write API reference for all endpoints in src/api/"
+docbot run "Create a troubleshooting section"
+```
+
+### Updates and improvements
+
+```bash
+docbot run "Update the installation guide with Docker instructions"
+docbot run "Add code examples to the authentication docs"
+docbot run "Improve the error messages in the API docs"
+```
+
+### Maintenance
+
+```bash
+docbot run "Fix broken links in the getting started page"
+docbot run "Update all references to the old API endpoint"
+docbot run "Add missing parameter descriptions to API docs"
+```
+
+### Refactoring
+
+```bash
+docbot run "Reorganize the guides section by user journey"
+docbot run "Split the long configuration page into separate files"
+docbot run "Consolidate duplicate content across pages"
+```
+
+## Workflow
+
+Typical Docbot workflow:
+
+1. **Submit task** - Provide a clear description of what you want
+2. **Planning** - Docbot analyzes the task and creates a plan
+3. **Approval** - Review and approve the plan (interactive mode)
+4. **Execution** - Docbot executes the plan step by step
+5. **Review** - Check the changes and commit if satisfied
+
+<Tip>
+Be specific in your task description. Instead of "update docs", say "add installation instructions for Windows users to the quickstart guide".
+</Tip>
+
+## Troubleshooting
+
+### Error: AI_GATEWAY_API_KEY environment variable is required
+
+```bash
+error: AI_GATEWAY_API_KEY environment variable is required
+```
+
+Set your API key:
+
+```bash
+export AI_GATEWAY_API_KEY="your-api-key"
+docbot run "Your task"
+```
+
+### Error: docs path is required
+
+```bash
+error: docs path is required (provide --docs or set paths.docs in config)
+```
+
+Either pass `--docs` or configure `paths.docs` in `docbot.config.jsonc`.
+
+### Port already in use
+
+If port 3070 is taken:
+
+```bash
+docbot run "Task" --port 8080
+```
+
+Or change the default in your config file.
+
+### UI not rendering correctly
+
+Ensure your terminal supports 256 colors and has sufficient dimensions (at least 80x24).
+
+### Task execution stalls
+
+If the agent appears stuck:
+
+1. Check verbose logs: `docbot run "Task" --verbose`
+2. Verify Qdrant is accessible: `curl http://127.0.0.1:6333/health`
+3. Check network connectivity to AI gateway
+4. Review task complexity (break down complex tasks)
+
+## Keyboard shortcuts
+
+While in the interactive UI:
+
+- `Ctrl+C` - Cancel current task and exit
+- `Ctrl+Z` - Suspend (resume with `fg`)
+
+## Next steps
+
+After running tasks:
+
+1. **Review changes** - Check the files Docbot modified
+2. **Test locally** - Verify documentation renders correctly
+3. **Commit** - Use your normal git workflow to commit changes
+4. **Iterate** - Run additional tasks to refine the docs
+
+See the [Server command](/commands/serve) for running Docbot as a persistent service.

@@ -1,0 +1,199 @@
+---
+title: Planner agent
+description: Creates documentation plans and structure based on research findings
+---
+
+The planner agent analyzes research findings from the blackboard and creates structured documentation plans. It determines what pages to create or update, how to organize content into sections, and which findings are relevant to each section.
+
+## Purpose and responsibility
+
+The planner:
+
+- Reads research findings from the blackboard
+- Analyzes existing documentation structure
+- Creates documentation plans with sections and operations
+- Maps findings to specific sections
+- Writes plans back to the blackboard for the writer to execute
+
+The planner focuses on structure and organization, not writing content. It decides what to document and how to organize it.
+
+## Agent creation
+
+```typescript planner.ts
+export function createPlannerAgent(
+  _blackboard: Blackboard,
+  tools: PlannerAgentTools,
+)
+```
+
+### Tool requirements
+
+```typescript planner.ts
+export type PlannerAgentTools = DocTools &
+  Pick<
+    BlackboardTools,
+    | "blackboard_read_findings"
+    | "blackboard_read_plan"
+    | "blackboard_write_plan"
+    | "submit_plan"
+  >
+```
+
+The planner has access to:
+
+- **DocTools** - Read documentation files and navigation structure
+- **Blackboard read tools** - Read findings and existing plans
+- **Blackboard write tools** - Write new plans and submit them
+
+## Workflow
+
+<Steps>
+  <Step title="Read findings">
+    Use `blackboard_read_findings` to get all findings for the documentation target
+  </Step>
+  
+  <Step title="Analyze structure">
+    Use `read_nav` to understand the current documentation structure
+  </Step>
+  
+  <Step title="Create outline">
+    Create a plan outline with sections, mapping finding IDs to each section
+  </Step>
+  
+  <Step title="Write plan">
+    Use `blackboard_write_plan` to save the plan to the blackboard
+  </Step>
+  
+  <Step title="Submit">
+    Immediately call `submit_plan` to mark planning as complete
+  </Step>
+</Steps>
+
+## Planning principles
+
+The planner follows these core principles:
+
+### Reorganize over add
+
+If documentation is messy, reorganize first rather than adding more pages.
+
+### Update over create
+
+If a document exists but is incomplete, update it rather than creating a new one.
+
+### Consolidate over duplicate
+
+If multiple documents cover similar topics, merge them rather than creating duplicates.
+
+### Delete ruthlessly
+
+Remove outdated or overly technical sections that don't serve end users.
+
+### Simplify
+
+If content is too technical, plan to rewrite in user-facing language.
+
+## Documentation structure guidelines
+
+### When to split into multiple pages
+
+Create multiple pages when:
+
+- A single concept has multiple distinct aspects (overview, setup, usage, reference)
+- Content exceeds 1500 words or takes more than 5 minutes to read
+- Users have different goals (quick start vs deep dive)
+- A feature has sub-features that can stand alone
+
+### When to keep on one page
+
+Keep content together when:
+
+- Content is naturally sequential and best read together
+- Splitting would create very thin pages (less than 300 words)
+- Cross-referencing would be more confusing than scrolling
+
+### Navigation structure
+
+Organize groups by user intent, not internal product structure:
+
+- **Getting Started** - Onboarding flows (welcome, quick start, first success)
+- **Core Concepts** or **Product** - How the main features work
+- **Features** - Detailed feature documentation
+- **Guides** or **How-to** - Task-oriented recipes
+- **Reference** - Exhaustive details, glossaries
+
+Use nested groups when a feature has 3 or more related pages that share common context. Keep navigation shallow (2-3 levels maximum).
+
+## Mintlify component guidance
+
+The planner considers when components should be used:
+
+- `<Steps>` for actual multi-step procedures
+- `<Tabs>` when content genuinely differs by use case
+- `<Accordion>` for truly optional or advanced content
+- `<Card>` for navigation links, not for every section
+
+Default to clear prose. A page with zero special components is often better than one crammed with them.
+
+## Blackboard communication
+
+The planner reads findings and writes plans:
+
+```typescript
+// Read findings for a documentation target
+const findings = await tools.blackboard_read_findings({ docTargetId })
+
+// Write a plan to the blackboard
+await tools.blackboard_write_plan({
+  docTargetId,
+  title: "Feature documentation",
+  outline: {
+    sections: [
+      {
+        id: "section-1",
+        title: "Overview",
+        findingIds: ["finding-1", "finding-2"],
+        operation: "create",
+        filePath: "/docs/features/overview.mdx"
+      }
+    ]
+  }
+})
+
+// Submit the plan
+await tools.submit_plan()
+```
+
+## Termination rules
+
+The planner stops when:
+
+- `submit_plan` is called (expected termination)
+- The step count reaches 12 (safety limit)
+
+```typescript planner.ts
+stopWhen: [
+  hasToolCall("submit_plan"),
+  stepCountIs(12),
+]
+```
+
+<Warning>
+After calling `blackboard_write_plan`, the planner must immediately call `submit_plan`. It should not revise the plan, read it back to check, or iterate.
+</Warning>
+
+## Model configuration
+
+The planner uses the fast model tier for structure creation:
+
+```typescript planner.ts
+const agent = new ToolLoopAgent({
+  instructions: PLANNER_SYSTEM_PROMPT,
+  model: config.models.fast,
+  maxRetries: runtime.maxRetries,
+  providerOptions: runtime.providerOptions,
+  // ...
+})
+```
+
+Configuration comes from `config.agents.runtime.planner`.

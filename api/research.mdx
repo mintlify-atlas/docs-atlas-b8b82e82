@@ -1,0 +1,186 @@
+---
+title: Research agent
+description: Discovers and filters information from code and documentation sources
+---
+
+The research agent searches through code and documentation to find information relevant to the documentation task. It performs targeted searches, filters results, and records findings to the blackboard for use by other agents.
+
+## Purpose and responsibility
+
+The research agent:
+
+- Searches code using exact identifiers and semantic queries
+- Searches existing documentation for related content
+- Filters and translates technical findings into user-facing language
+- Records findings to the blackboard with relevance scores
+- Focuses on product capabilities and user workflows
+
+The research agent discovers what the product actually does by examining the codebase, rather than assuming or guessing.
+
+## Agent creation
+
+```typescript research.ts
+export function createResearchAgent(
+  _blackboard: Blackboard,
+  tools: ResearchAgentTools,
+)
+```
+
+### Tool requirements
+
+```typescript research.ts
+export type ResearchAgentTools = DocTools &
+  Partial<CodebaseTools> &
+  Pick<
+    BlackboardTools,
+    | "blackboard_read_finding"
+    | "blackboard_read_findings"
+    | "blackboard_write_finding"
+    | "mark_research_complete"
+  >
+```
+
+The research agent has access to:
+
+- **DocTools** - Search and read documentation files
+- **CodebaseTools** (partial) - Search code with exact or semantic queries
+- **Blackboard read tools** - Read existing findings
+- **Blackboard write tools** - Write new findings and mark research complete
+
+## Workflow
+
+<Steps>
+  <Step title="Perform searches">
+    Do 5-8 targeted searches using `code_search`, `semantic_code_search`, or `search_docs`
+  </Step>
+  
+  <Step title="Record findings">
+    For each useful result, record it using `blackboard_write_finding`
+  </Step>
+  
+  <Step title="Complete">
+    Immediately call `mark_research_complete` after recording findings
+  </Step>
+</Steps>
+
+## Search strategy
+
+The research agent uses the right search tool for each query:
+
+### Code search (exact)
+
+Use `code_search` for exact identifiers or regex patterns:
+
+- Type names, function names, constants
+- Specific implementation patterns
+- Exact string matches
+
+### Semantic code search
+
+Use `semantic_code_search` for conceptual or natural language queries:
+
+- "where do we handle authentication"
+- "how are notifications sent"
+- "what validates user input"
+
+### Documentation search
+
+Use `search_docs` to find related documentation:
+
+- Existing pages about the same topic
+- Pages that need updating
+- Navigation structure and organization
+
+## Critical rules
+
+<Warning>
+Always use code search tools to discover what the product actually does. Never assume or guess about features without searching first.
+</Warning>
+
+- Use the appropriate search tool for each query type
+- Translate code findings into user-facing language
+- Focus on product capabilities and user workflows, not code structure
+- Record what users can do, not implementation details
+
+## Finding format
+
+Each finding recorded to the blackboard includes:
+
+- **Summary** - Clear description of what was found
+- **File path** - Source location (if applicable)
+- **Relevance score** - 0 to 1 indicating importance
+- **Type** - One of: `code`, `doc`, `api`, or `concept`
+
+```typescript
+await tools.blackboard_write_finding({
+  docTargetId,
+  summary: "Users can configure notification preferences in their account settings",
+  filePath: "/src/features/notifications/settings.ts",
+  relevance: 0.9,
+  type: "code",
+  content: "// detailed content from the file"
+})
+```
+
+## Blackboard communication
+
+The research agent writes findings to the blackboard:
+
+```typescript
+// Write a finding
+await tools.blackboard_write_finding({
+  docTargetId: "target-123",
+  summary: "Feature allows users to export data in CSV and JSON formats",
+  filePath: "/src/export/formats.ts",
+  relevance: 0.95,
+  type: "code",
+  content: "export const SUPPORTED_FORMATS = ['csv', 'json']"
+})
+
+// Mark research complete when done
+await tools.mark_research_complete()
+```
+
+## Output guidelines
+
+- Be concise but complete
+- Write findings for non-technical users
+- Don't ask for confirmation—proceed automatically
+- Don't use filler phrases like "I can help with..."
+- Describe features in terms of what users can accomplish
+
+## Termination rules
+
+The research agent stops when:
+
+- `mark_research_complete` is called (expected termination)
+- The step count reaches 15 (safety limit)
+
+```typescript research.ts
+stopWhen: [
+  hasToolCall("mark_research_complete"),
+  stepCountIs(15),
+]
+```
+
+<Warning>
+After completing 5-8 searches and recording findings, the agent must call `mark_research_complete`. It should not search for "more completeness" beyond 8 searches or wait until it feels "ready".
+</Warning>
+
+The research agent's job is discovery, not perfection. It records what it found and terminates.
+
+## Model configuration
+
+The research agent uses the fast model tier for high-volume reading:
+
+```typescript research.ts
+const agent = new ToolLoopAgent({
+  instructions: RESEARCH_SYSTEM_PROMPT,
+  model: config.models.fast,
+  maxRetries: runtime.maxRetries,
+  providerOptions: runtime.providerOptions,
+  // ...
+})
+```
+
+Configuration comes from `config.agents.runtime.research`.

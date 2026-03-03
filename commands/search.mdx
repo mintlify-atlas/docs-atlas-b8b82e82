@@ -1,0 +1,374 @@
+---
+title: docbot search
+description: Search your indexed documentation using semantic, exact, or hybrid search
+---
+
+The `docbot search` command performs fast searches over your indexed documentation using vector embeddings and traditional text search. It supports three search modes: semantic, exact, and hybrid.
+
+## Basic usage
+
+```bash
+docbot search "how to configure authentication"
+```
+
+This command will:
+
+1. Connect to Qdrant
+2. Load the documentation index
+3. Search using hybrid mode (default)
+4. Display ranked results with scores and snippets
+
+<Note>
+You must run `docbot index` before searching. The search command queries the vector database, not the raw documentation files.
+</Note>
+
+## Options
+
+<ParamField path="query" type="string" positional required>
+  The search query. This is a required positional argument.
+  
+  Examples:
+  - `"API authentication"`
+  - `"error codes"`
+  - `"deployment configuration"`
+</ParamField>
+
+<ParamField path="--docs" type="string" required={false}>
+  Path to the documentation directory. Can also be set via `paths.docs` in your config file.
+</ParamField>
+
+<ParamField path="--config" type="string">
+  Path to docbot config file. Defaults to `docbot.config.jsonc` in your project root.
+  
+  **Alias:** `-c`
+</ParamField>
+
+<ParamField path="--type" type="string" default="hybrid">
+  Search type: `semantic`, `exact`, or `hybrid`.
+  
+  - **semantic** - Uses vector embeddings to find conceptually similar content
+  - **exact** - Traditional keyword/text search
+  - **hybrid** - Combines both semantic and exact search for best results
+</ParamField>
+
+<ParamField path="--limit" type="number" default={5}>
+  Maximum number of results to return.
+</ParamField>
+
+<ParamField path="--qdrant-url" type="string">
+  Qdrant server URL. Overrides the URL in your config file.
+  
+  **Default:** `http://127.0.0.1:6333`
+</ParamField>
+
+## Examples
+
+<CodeGroup>
+
+```bash Basic search
+docbot search "authentication"
+```
+
+```bash Semantic search
+docbot search "how do I set up auth" --type semantic
+```
+
+```bash Exact keyword search
+docbot search "API_KEY" --type exact
+```
+
+```bash Hybrid search (default)
+docbot search "deployment guide" --type hybrid
+```
+
+```bash Limit results
+docbot search "configuration" --limit 10
+```
+
+```bash With custom config
+docbot search "troubleshooting" --config ./config/docbot.config.jsonc
+```
+
+```bash Remote Qdrant
+docbot search "installation" --qdrant-url https://qdrant.example.com
+```
+
+</CodeGroup>
+
+## Search types
+
+### Semantic search
+
+Uses vector embeddings to find conceptually similar content, even if the exact words don't match:
+
+```bash
+docbot search "how do I authenticate users" --type semantic
+```
+
+This will match documentation about:
+- Authentication flows
+- User login
+- Identity verification
+- OAuth setup
+
+Even if those pages don't contain the exact phrase "authenticate users".
+
+**Best for:**
+- Natural language queries
+- Conceptual searches
+- Finding related topics
+- When you don't know exact terminology
+
+### Exact search
+
+Traditional keyword-based search that matches exact terms:
+
+```bash
+docbot search "Bearer token" --type exact
+```
+
+This will only match pages that contain the words "Bearer" and "token".
+
+**Best for:**
+- Searching for specific terms
+- Code snippets or identifiers
+- API endpoint names
+- Error codes or messages
+
+### Hybrid search (default)
+
+Combines semantic and exact search, ranking results using both signals:
+
+```bash
+docbot search "API authentication" --type hybrid
+```
+
+This gives you the best of both worlds:
+- Finds exact matches for "API authentication"
+- Also surfaces semantically related content
+- Ranks by combined relevance score
+
+**Best for:**
+- General purpose searching
+- When you're not sure which mode to use
+- Most user-facing search experiences
+
+<Tip>
+Hybrid search is the default because it works well for most queries. Only switch to semantic or exact when you have specific requirements.
+</Tip>
+
+## Output format
+
+Search results are displayed with:
+
+1. **Score** - Relevance score (0-1 range, higher is better)
+2. **File path** - Relative path to the documentation file
+3. **Section** - The heading/section where the match was found (if applicable)
+4. **Content snippet** - First 150 characters of the matching content
+
+### Example output
+
+```bash
+$ docbot search "authentication" --limit 3
+
+found 3 results for "authentication":
+
+[0.892] docs/guides/authentication.mdx
+        section: OAuth 2.0 Setup
+        Configure OAuth 2.0 authentication for your application. This guide covers the complete flow from registration to token refresh...
+
+[0.847] docs/api/auth-endpoints.mdx
+        section: POST /auth/login
+        Authenticate a user and receive an access token. Send user credentials in the request body to receive a JWT token for subseque...
+
+[0.781] docs/quickstart.mdx
+        section: Authentication
+        Before making API calls, you need to authenticate. Docbot supports API key authentication and OAuth 2.0. For quick testing, us...
+```
+
+## Understanding scores
+
+Search scores indicate relevance:
+
+- **0.9 - 1.0** - Excellent match, very relevant
+- **0.7 - 0.9** - Good match, likely what you're looking for
+- **0.5 - 0.7** - Moderate match, may be relevant
+- **0.0 - 0.5** - Weak match, probably not what you want
+
+<Note>
+Scores are relative and depend on your corpus. A score of 0.6 in one documentation set might be more relevant than 0.8 in another.
+</Note>
+
+## Use cases
+
+### Testing search quality
+
+After indexing, verify that search works:
+
+```bash
+docbot search "quickstart" --limit 1
+```
+
+Expect to see your quickstart guide at the top.
+
+### Finding related content
+
+Discover pages related to a topic:
+
+```bash
+docbot search "deployment" --limit 10
+```
+
+Review all deployment-related pages to ensure consistency.
+
+### Debugging indexing
+
+If a page isn't showing up in search:
+
+```bash
+docbot search "exact phrase from page" --type exact
+```
+
+If it doesn't appear, the page may not be indexed correctly.
+
+### Building search UIs
+
+Test queries that users might enter:
+
+```bash
+docbot search "how to install"
+docbot search "error 403"
+docbot search "configuration options"
+```
+
+This helps you understand what results users will see.
+
+## Configuration
+
+Set defaults in `docbot.config.jsonc`:
+
+```json
+{
+  "projectSlug": "my-project",
+  "paths": {
+    "docs": "./docs"
+  },
+  "qdrant": {
+    "url": "http://127.0.0.1:6333",
+    "collections": {
+      "docs": "my-project-docs",
+      "code": "my-project-code"
+    }
+  }
+}
+```
+
+Then search without flags:
+
+```bash
+docbot search "query"
+```
+
+## Performance
+
+Search is very fast:
+
+- **Semantic search** - 10-50ms for most queries
+- **Exact search** - 5-20ms for most queries
+- **Hybrid search** - 20-70ms (runs both and merges results)
+
+Performance scales with:
+- Number of indexed chunks
+- Query complexity
+- Qdrant server resources
+
+<Tip>
+For large documentation sets (10,000+ chunks), consider using exact search for simple keyword queries to reduce latency.
+</Tip>
+
+## Troubleshooting
+
+### Error: AI_GATEWAY_API_KEY environment variable is required
+
+```bash
+error: AI_GATEWAY_API_KEY environment variable is required
+```
+
+Set your API key:
+
+```bash
+export AI_GATEWAY_API_KEY="your-api-key"
+docbot search "query"
+```
+
+The search command needs the API key to generate query embeddings.
+
+### Error: docs path is required
+
+```bash
+error: docs path is required (provide --docs or set paths.docs in config)
+```
+
+Either pass `--docs` or configure `paths.docs` in your config file.
+
+### No results found
+
+If search returns no results:
+
+1. **Verify indexing** - Run `docbot index --docs ./docs` first
+2. **Check collection** - Ensure the docs collection exists in Qdrant
+3. **Try different query** - Rephrase or use different search type
+4. **Check spelling** - Especially for exact search
+
+### Connection errors
+
+If Qdrant isn't accessible:
+
+```bash
+Error: connect ECONNREFUSED 127.0.0.1:6333
+```
+
+Verify Qdrant is running:
+
+```bash
+curl http://127.0.0.1:6333/health
+```
+
+Or start it with Docker:
+
+```bash
+docker run -d --name docbot-qdrant -p 6333:6333 qdrant/qdrant
+```
+
+### Unexpected results
+
+If results seem off:
+
+1. **Try different search type** - Semantic vs exact vs hybrid
+2. **Increase limit** - See more results: `--limit 20`
+3. **Check indexing** - Re-index with `--force` to rebuild embeddings
+4. **Refine query** - Be more specific or use different terms
+
+## Programmatic usage
+
+The search command is designed for CLI usage, but you can also use the Docbot API:
+
+```bash
+# Start server
+docbot serve --docs ./docs
+
+# Query via API
+curl http://localhost:3070/api/search?q=authentication&limit=5
+```
+
+See the [Server command](/commands/serve) for more on the API.
+
+## Next steps
+
+After testing search:
+
+1. **Integrate with UI** - Use the Docbot server API to power search in your docs site
+2. **Refine indexing** - Adjust chunking strategy if results aren't optimal
+3. **Run tasks** - Use `docbot run` to improve documentation based on search gaps
+
+See the [Index command](/commands/index) for managing embeddings.

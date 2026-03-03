@@ -1,97 +1,98 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: Introduction
+description: AI-powered CLI agent that keeps your documentation up to date by analyzing your codebase and proposing structured changes
 ---
 
-## Setting up
+<img src="https://ltwtljxsstgqk8ay.public.blob.vercel-storage.com/docbot.jpg" alt="Docbot" />
 
-Get your documentation site up and running in minutes.
+# Introduction to Docbot
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+Docbot is a CLI agent that helps you keep documentation up to date. It reads your docs and codebase, proposes a concrete plan with file-level operations, and only writes changes after you approve.
 
-## Make it yours
+## Key features
 
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Codebase-aware documentation" icon="code">
+    Finds gaps and stale pages by reading your code, not vibes. Docbot analyzes your actual implementation to suggest meaningful doc improvements.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  
+  <Card title="Semantic search that works" icon="magnifying-glass">
+    Combines semantic and exact match search with reranking to find exactly what you need in your docs and code.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  
+  <Card title="Interactive planning" icon="list-check">
+    You approve the plan before anything touches your files. See exactly what changes will be made before they happen.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  
+  <Card title="MDX-first output" icon="file-code">
+    Structured edits instead of giant blob rewrites. Docbot understands MDX components and makes targeted changes.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## How it works
 
-Everything you need to create world-class documentation.
+Docbot follows a structured workflow to improve your documentation:
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+<Steps>
+  <Step title="Analysis">
+    Scan docs and codebase to find gaps, duplicates, and stale content
+  </Step>
+  
+  <Step title="Planning">
+    Propose a structured set of operations: create, update, move, delete, or consolidate pages
+  </Step>
+  
+  <Step title="Execution">
+    Apply changes with MDX edits that are component-aware when relevant
+  </Step>
+  
+  <Step title="Review">
+    Verify the changes and re-scan for obvious misses
+  </Step>
+</Steps>
 
-## Need inspiration?
+## What makes Docbot opinionated
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+Docbot is designed with specific tools and frameworks in mind to enable rapid development:
+
+- **Docs frameworks**: Targets MDX-based doc sites and automatically detects Mintlify project structure (via `docs.json`). Support for other frameworks like Fumadocs, Nextra, and Docusaurus is planned.
+- **Vector store**: Uses Qdrant (required) for embeddings. It's easy to run locally and performs well.
+- **Models/provider**: Currently uses Vercel AI Gateway via `AI_GATEWAY_API_KEY`. You can configure models in the config file, and support for other providers is planned.
+- **Runtime**: Requires Bun. This will not change.
+
+<Note>
+  While Docbot is opinionated today, it's not meant to stay tied to a single docs framework or provider forever. The architecture allows for expansion as needs grow.
+</Note>
+
+## Requirements
+
+Before using Docbot, make sure you have:
+
+- [Bun](https://bun.sh) runtime installed
+- [Qdrant](https://qdrant.tech) vector database (local via Docker or remote)
+- `rg` (ripgrep) for fast exact-match search
+- `AI_GATEWAY_API_KEY` environment variable set (Vercel AI Gateway)
+
+<Tip>
+  The `docbot init` command will help you set up a local Qdrant instance via Docker automatically.
+</Tip>
+
+## Performance notes
+
+Docbot is under-optimized today but still provides significant time savings:
+
+- **Indexing speed**: Running a full cycle across multiple pages may take 5–10 minutes
+- **Still worth it**: Much faster than the hours you'd spend updating docs manually
+- **Future improvements**: The overall flow will continue to improve, reducing both time and token costs
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Get from zero to running your first Docbot task in minutes
+  </Card>
+  
+  <Card title="Installation" icon="download" href="/installation">
+    Detailed installation instructions and environment setup
+  </Card>
+</CardGroup>

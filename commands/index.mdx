@@ -1,0 +1,297 @@
+---
+title: docbot index
+description: Index documentation and codebase files for semantic search and retrieval
+---
+
+The `docbot index` command scans your documentation and codebase, creates embeddings, and stores them in Qdrant for fast semantic search. It tracks file changes and only re-indexes modified files.
+
+## Basic usage
+
+```bash
+docbot index --docs ./docs
+```
+
+This command will:
+
+1. Connect to your Qdrant instance
+2. Scan documentation files for changes
+3. Create embeddings for new or modified files
+4. Update the embedding manifest with file hashes
+5. Optionally index codebase files if `--codebase` is provided
+
+<Note>
+The `AI_GATEWAY_API_KEY` environment variable is required for indexing. Docbot uses this to generate embeddings through your AI gateway.
+</Note>
+
+## Options
+
+<ParamField path="--docs" type="string" required={false}>
+  Path to the documentation directory. Can also be set via `paths.docs` in your config file.
+  
+  If both are omitted, the command will fail with an error.
+</ParamField>
+
+<ParamField path="--codebase" type="string">
+  Comma-separated paths or globs to codebase directories. Falls back to `paths.codebase` in your config file.
+  
+  Examples: `apps/helm,packages/*` or `src/**`
+  
+  If omitted, only documentation will be indexed.
+</ParamField>
+
+<ParamField path="--config" type="string">
+  Path to docbot config file. Defaults to `docbot.config.jsonc` in your project root.
+  
+  **Alias:** `-c`
+</ParamField>
+
+<ParamField path="--qdrant-url" type="string">
+  Qdrant server URL. Overrides the URL in your config file.
+  
+  **Default:** `http://127.0.0.1:6333`
+</ParamField>
+
+<ParamField path="--force" type="boolean" default={false}>
+  Force full re-index, ignoring the manifest. This re-creates embeddings for all files even if they haven't changed.
+  
+  **Alias:** `-f`
+</ParamField>
+
+## Examples
+
+<CodeGroup>
+
+```bash Index documentation only
+docbot index --docs ./docs
+```
+
+```bash Index docs and codebase
+docbot index --docs ./docs --codebase ./src
+```
+
+```bash Force full re-index
+docbot index --docs ./docs --force
+```
+
+```bash Use custom config
+docbot index --config ./config/docbot.config.jsonc
+```
+
+```bash Multiple codebase paths
+docbot index --docs ./docs --codebase "apps/*,packages/*"
+```
+
+```bash Remote Qdrant instance
+docbot index --docs ./docs --qdrant-url https://qdrant.example.com
+```
+
+</CodeGroup>
+
+## How indexing works
+
+### Incremental indexing
+
+Docbot maintains an embedding manifest at `.docbot/manifest.json` that tracks file hashes. On each run:
+
+1. **Scans files** - Walks the documentation and codebase directories
+2. **Computes hashes** - Calculates content hashes for each file
+3. **Detects changes** - Compares hashes against the manifest
+4. **Syncs embeddings** - Only processes files that are new, changed, or removed
+
+This makes subsequent indexing runs very fast.
+
+### File categorization
+
+During scanning, files are categorized as:
+- **Added** - New files not in the manifest
+- **Changed** - Files with different content hashes
+- **Removed** - Files in manifest but no longer on disk
+- **Unchanged** - Files with matching hashes (skipped)
+
+### Chunking strategy
+
+Docbot splits files into chunks for better embedding quality:
+- **Documentation** - Split by headings and semantic boundaries
+- **Code** - Split by function/class definitions and logical blocks
+
+Each chunk is embedded separately and stored with metadata (path, section, line numbers).
+
+## Expected output
+
+### First-time indexing
+
+```bash
+initializing docbot...
+  docs: /path/to/docs
+  project: my-project
+  codebase paths:
+    - /path/to/src
+connecting to qdrant...
+scanning documentation...
+  docs: 45 new, 0 changed, 0 removed, 0 unchanged (scanned in 0.8s)
+syncing documentation embeddings...
+  ✓ synced 342 chunks
+scanning codebase...
+  code: 128 new, 0 changed, 0 removed, 0 unchanged (scanned in 1.2s)
+syncing codebase embeddings...
+  ✓ synced 867 chunks
+done
+```
+
+### Incremental update
+
+```bash
+initializing docbot...
+  docs: /path/to/docs
+  project: my-project
+connecting to qdrant...
+scanning documentation...
+  docs: 2 new, 3 changed, 1 removed, 39 unchanged (scanned in 0.3s)
+syncing documentation embeddings...
+  ✓ synced 18 chunks
+scanning codebase...
+  code: 127 files unchanged (scanned in 0.4s)
+done
+```
+
+### No changes detected
+
+```bash
+initializing docbot...
+  docs: /path/to/docs
+  project: my-project
+connecting to qdrant...
+scanning documentation...
+  docs: 45 files unchanged (scanned in 0.2s)
+scanning codebase...
+  code: 128 files unchanged (scanned in 0.3s)
+done
+```
+
+<Tip>
+Run `docbot index` regularly to keep embeddings up to date. It's fast on subsequent runs thanks to incremental indexing.
+</Tip>
+
+## Configuration
+
+You can configure paths in `docbot.config.jsonc` to avoid passing flags:
+
+```json
+{
+  "projectSlug": "my-project",
+  "paths": {
+    "docs": "./docs",
+    "codebase": ["./src", "./apps/*"]
+  },
+  "qdrant": {
+    "url": "http://127.0.0.1:6333",
+    "collections": {
+      "docs": "my-project-docs",
+      "code": "my-project-code"
+    }
+  }
+}
+```
+
+Then simply run:
+
+```bash
+docbot index
+```
+
+## Monitoring progress
+
+The indexing process shows real-time progress:
+
+- **Scanning phase** - Shows file counts and scan duration
+- **Syncing phase** - Shows chunk counts as embeddings are created
+- **Manifest saves** - Periodically saves progress (automatic on SIGINT/SIGTERM)
+
+<Note>
+If you interrupt indexing with Ctrl+C, the manifest is saved automatically. Rerunning the command will resume from where it left off.
+</Note>
+
+## Performance considerations
+
+### Large codebases
+
+For projects with thousands of files:
+
+1. **Use specific paths** - Instead of indexing the entire repo, target specific directories:
+   ```bash
+   docbot index --docs ./docs --codebase "./src,./lib"
+   ```
+
+2. **Exclude build artifacts** - Ensure your codebase paths don't include `node_modules`, `dist`, or other generated directories
+
+3. **First run takes time** - Initial indexing can take several minutes for large projects. Subsequent runs are much faster.
+
+### Embedding costs
+
+Each chunk generates an API call to create embeddings. To minimize costs:
+
+- Use incremental indexing (don't use `--force` unnecessarily)
+- Be selective with codebase paths
+- Configure `.docbotignore` to exclude irrelevant files (coming soon)
+
+## Troubleshooting
+
+### Error: AI_GATEWAY_API_KEY environment variable is required
+
+```bash
+error: AI_GATEWAY_API_KEY environment variable is required
+```
+
+Set your API key:
+
+```bash
+export AI_GATEWAY_API_KEY="your-api-key"
+docbot index --docs ./docs
+```
+
+### Error: docs path is required
+
+```bash
+error: docs path is required (provide --docs or set paths.docs in config)
+```
+
+Either pass `--docs` or configure `paths.docs` in your config file.
+
+### Connection errors
+
+If Qdrant isn't accessible:
+
+```bash
+connecting to qdrant...
+Error: connect ECONNREFUSED 127.0.0.1:6333
+```
+
+Verify Qdrant is running:
+
+```bash
+curl http://127.0.0.1:6333/health
+```
+
+Or start it with Docker:
+
+```bash
+docker run -d --name docbot-qdrant -p 6333:6333 -v $(pwd)/.docbot/qdrant_storage:/qdrant/storage qdrant/qdrant
+```
+
+### Slow indexing
+
+If indexing is slower than expected:
+
+1. **Check network latency** - Embedding API calls depend on network speed
+2. **Verify file counts** - Ensure you're not accidentally indexing `node_modules` or other large directories
+3. **Monitor Qdrant** - Check Qdrant logs for performance issues
+
+## Next steps
+
+After indexing:
+
+1. **Test search** - Use `docbot search "query"` to verify embeddings
+2. **Run tasks** - Start the agent with `docbot run "task"`
+3. **Keep updated** - Re-run indexing when documentation changes
+
+See the [Search command](/commands/search) for querying your indexed documentation.

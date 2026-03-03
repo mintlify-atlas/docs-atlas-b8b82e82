@@ -1,0 +1,219 @@
+---
+title: docbot init
+description: Initialize Docbot in your project with automatic configuration and Docker setup
+---
+
+The `docbot init` command bootstraps Docbot in your project by creating a configuration file, setting up the cache directory, and optionally launching a local Qdrant vector database instance.
+
+## Basic usage
+
+```bash
+docbot init
+```
+
+This command will:
+
+1. Create a `docbot.config.jsonc` file in your project root
+2. Create a `.docbot/` cache directory for vector database storage
+3. Add `.docbot/` to your `.gitignore`
+4. Check for Docker and start a Qdrant container (if Docker is available)
+
+<Note>
+The command must be run from within a project directory that contains a `package.json` file. Docbot will search for the project root automatically.
+</Note>
+
+## Options
+
+<ParamField path="--force" type="boolean" default={false}>
+  Overwrite existing configuration. Use this flag to reinitialize Docbot even if `docbot.config.jsonc` already exists.
+  
+  **Alias:** `-f`
+</ParamField>
+
+<ParamField path="--skip-docker" type="boolean" default={false}>
+  Skip Docker setup instructions. Use this if you're managing Qdrant separately or using a remote instance.
+</ParamField>
+
+## Examples
+
+<CodeGroup>
+
+```bash Basic initialization
+docbot init
+```
+
+```bash Reinitialize with force
+docbot init --force
+```
+
+```bash Skip Docker setup
+docbot init --skip-docker
+```
+
+</CodeGroup>
+
+## What gets created
+
+### Configuration file
+
+The command creates `docbot.config.jsonc` with sensible defaults:
+
+```json
+{
+  // project identifier used for qdrant collection naming
+  "projectSlug": "your-project-name",
+
+  // qdrant vector database settings
+  "qdrant": {
+    "url": "http://127.0.0.1:6333",
+    "collections": {
+      "docs": "your-project-docs",
+      "code": "your-project-code"
+    }
+  }
+}
+```
+
+The `projectSlug` is automatically derived from your `package.json` name field.
+
+### Cache directory
+
+A `.docbot/` directory is created to store:
+- Qdrant vector database files
+- Embedding manifests
+- Indexing metadata
+
+<Warning>
+The `.docbot/` directory can grow large depending on your documentation size. It's automatically added to `.gitignore` and should not be committed to version control.
+</Warning>
+
+## Docker setup
+
+By default, `docbot init` attempts to set up a local Qdrant instance using Docker:
+
+1. **Checks if Docker is installed** - Verifies `docker` is available in your PATH
+2. **Looks for existing containers** - Reuses the `docbot-qdrant` container if it exists
+3. **Starts or creates the container** - Runs `qdrant/qdrant` with port 6333 exposed
+4. **Waits for readiness** - Polls the health endpoint to confirm Qdrant is accessible
+
+### Expected output
+
+```bash
+initializing docbot in /path/to/your/project
+creating .docbot directory...
+creating docbot.config.jsonc...
+adding .docbot/ to .gitignore...
+
+docbot initialized successfully!
+
+checking docker setup...
+
+starting qdrant container...
+✓ qdrant container started
+  waiting for qdrant to be ready...
+✓ qdrant is ready at http://127.0.0.1:6333
+
+configuration saved to docbot.config.jsonc
+cache directory created at .docbot/
+
+next: run docbot with your task:
+   bunx @helmlabs/docbot run "your task" --docs ./docs --codebase ./src
+```
+
+### Manual Docker setup
+
+If Docker is not installed or you prefer manual setup, the command provides instructions:
+
+```bash
+warning: docker is not installed or not in PATH
+
+to use docbot, you need qdrant running.
+install docker and run:
+
+   docker run -d -p 6333:6333 -v /absolute/path/.docbot/qdrant_storage:/qdrant/storage qdrant/qdrant
+
+or use a remote qdrant instance in docbot.config.jsonc
+```
+
+<Tip>
+If you're using a remote Qdrant instance or managing Docker separately, run `docbot init --skip-docker` to avoid the Docker checks entirely.
+</Tip>
+
+## Common scenarios
+
+### Reinitializing after config corruption
+
+```bash
+docbot init --force
+```
+
+This overwrites your existing configuration. Any custom settings will be lost.
+
+### Using with remote Qdrant
+
+```bash
+docbot init --skip-docker
+```
+
+Then manually edit `docbot.config.jsonc` to point to your remote instance:
+
+```json
+{
+  "qdrant": {
+    "url": "https://your-qdrant-instance.com",
+    "collections": {
+      "docs": "your-project-docs",
+      "code": "your-project-code"
+    }
+  }
+}
+```
+
+### Monorepo setup
+
+Run `docbot init` from the workspace root where your main `package.json` lives. The command will use that location as the project root.
+
+## Troubleshooting
+
+### Error: could not find package.json
+
+```bash
+error: could not find package.json in current directory or any parent
+please run this command from within a project directory
+```
+
+Make sure you're running the command from within a Node.js project that has a `package.json` file.
+
+### Error: docbot.config.jsonc already exists
+
+```bash
+error: docbot.config.jsonc already exists
+use --force to overwrite
+```
+
+Either remove the existing config manually or run with `--force` to overwrite it.
+
+### Qdrant container not accessible
+
+If the container starts but isn't accessible:
+
+```bash
+warning: qdrant may still be starting up
+you can check status with: docker logs docbot-qdrant
+```
+
+Wait a few seconds and verify with:
+
+```bash
+curl http://127.0.0.1:6333/health
+```
+
+## Next steps
+
+After initialization:
+
+1. **Index your documentation** - Run `docbot index --docs ./docs` to create embeddings
+2. **Configure paths** - Edit `docbot.config.jsonc` to customize documentation and codebase paths
+3. **Run tasks** - Use `docbot run "task description"` to start the agent
+
+See the [Configuration](/configuration) guide for advanced setup options.

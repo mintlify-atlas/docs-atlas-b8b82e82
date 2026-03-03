@@ -1,0 +1,516 @@
+---
+title: docbot serve
+description: Start the Docbot server without the interactive UI for API access
+---
+
+The `docbot serve` command starts the Docbot HTTP server without the interactive terminal UI. This is useful for running Docbot as a service, integrating with other tools, or accessing the REST API directly.
+
+## Basic usage
+
+```bash
+docbot serve --docs ./docs
+```
+
+This command will:
+
+1. Connect to Qdrant
+2. Initialize documentation and codebase indexes
+3. Start the HTTP server
+4. Keep running until terminated
+
+<Note>
+The serve command does NOT perform indexing. You must run `docbot index` first to create embeddings. The serve command only loads existing indexes.
+</Note>
+
+## Options
+
+<ParamField path="--docs" type="string" required={false}>
+  Path to the documentation directory. Can also be set via `paths.docs` in your config file.
+</ParamField>
+
+<ParamField path="--codebase" type="string">
+  Comma-separated paths or globs to codebase directories. Falls back to `paths.codebase` in your config file.
+  
+  Examples: `apps/helm,packages/*` or `src/**`
+</ParamField>
+
+<ParamField path="--config" type="string">
+  Path to docbot config file. Defaults to `docbot.config.jsonc` in your project root.
+  
+  **Alias:** `-c`
+</ParamField>
+
+<ParamField path="--interactive" type="boolean" default={true}>
+  Enable interactive mode (allows agent to ask questions). When false, the agent runs autonomously without human input.
+  
+  This setting affects how tasks submitted via API are executed.
+</ParamField>
+
+<ParamField path="--port" type="number">
+  Server port. Overrides the port in your config file.
+  
+  **Default:** `3070`
+</ParamField>
+
+<ParamField path="--qdrant-url" type="string">
+  Qdrant server URL. Overrides the URL in your config file.
+  
+  **Default:** `http://127.0.0.1:6333`
+</ParamField>
+
+## Examples
+
+<CodeGroup>
+
+```bash Basic server
+docbot serve --docs ./docs
+```
+
+```bash With codebase
+docbot serve --docs ./docs --codebase ./src
+```
+
+```bash Custom port
+docbot serve --docs ./docs --port 8080
+```
+
+```bash Non-interactive mode
+docbot serve --docs ./docs --interactive=false
+```
+
+```bash With custom config
+docbot serve --config ./config/docbot.config.jsonc
+```
+
+```bash Remote Qdrant
+docbot serve --docs ./docs --qdrant-url https://qdrant.example.com
+```
+
+```bash Multiple codebase paths
+docbot serve --docs ./docs --codebase "apps/*,packages/*"
+```
+
+</CodeGroup>
+
+## Expected output
+
+```bash
+initializing docbot server...
+  docs: /path/to/docs
+  project: my-project
+  codebase paths:
+    - /path/to/src
+  interactive: true
+connecting to qdrant...
+server ready to accept requests
+```
+
+The server then runs indefinitely, logging requests as they arrive.
+
+<Tip>
+Unlike `docbot run`, the serve command doesn't launch a UI. It's designed to run in the background as a service.
+</Tip>
+
+## API endpoints
+
+Once the server is running, you can access these endpoints:
+
+### POST /api/task
+
+Submit a documentation task:
+
+```bash
+curl -X POST http://localhost:3070/api/task \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Add a quickstart guide"}'
+```
+
+Response:
+```json
+{
+  "taskId": "abc123",
+  "status": "running"
+}
+```
+
+### GET /api/task/:id
+
+Check task status:
+
+```bash
+curl http://localhost:3070/api/task/abc123
+```
+
+Response:
+```json
+{
+  "taskId": "abc123",
+  "status": "completed",
+  "result": {
+    "filesModified": ["docs/quickstart.mdx"],
+    "summary": "Created quickstart guide with installation and usage steps"
+  }
+}
+```
+
+### GET /api/search
+
+Search documentation:
+
+```bash
+curl "http://localhost:3070/api/search?q=authentication&limit=5"
+```
+
+Response:
+```json
+{
+  "results": [
+    {
+      "path": "docs/guides/authentication.mdx",
+      "section": "OAuth 2.0 Setup",
+      "content": "Configure OAuth 2.0 authentication...",
+      "score": 0.892
+    }
+  ]
+}
+```
+
+### WebSocket /ws
+
+Stream real-time task output:
+
+```javascript
+const ws = new WebSocket('ws://localhost:3070/ws')
+
+ws.on('message', (data) => {
+  const event = JSON.parse(data)
+  console.log(event.type, event.data)
+})
+
+ws.send(JSON.stringify({
+  type: 'task',
+  task: 'Add API reference'
+}))
+```
+
+<Note>
+API documentation is in progress. Check the [Server API reference](/api) for complete endpoint details.
+</Note>
+
+## Use cases
+
+### Running as a service
+
+Use with systemd or Docker to run Docbot as a persistent service:
+
+```bash
+# systemd example
+[Unit]
+Description=Docbot Server
+After=network.target
+
+[Service]
+Type=simple
+User=docbot
+WorkingDirectory=/app
+Environment="AI_GATEWAY_API_KEY=your-key"
+ExecStart=/usr/local/bin/bunx @helmlabs/docbot serve --docs /app/docs
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### CI/CD integration
+
+Run Docbot in CI to automate documentation tasks:
+
+```yaml
+# GitHub Actions example
+- name: Start Docbot server
+  run: |
+    bunx @helmlabs/docbot serve --docs ./docs &
+    sleep 5
+
+- name: Submit documentation task
+  run: |
+    curl -X POST http://localhost:3070/api/task \
+      -H "Content-Type: application/json" \
+      -d '{"task": "Update changelog with new features"}'
+```
+
+### Integration with custom tools
+
+Build custom documentation tools that use Docbot:
+
+```javascript
+import { spawn } from 'child_process'
+import fetch from 'node-fetch'
+
+// Start server
+const server = spawn('bunx', ['@helmlabs/docbot', 'serve', '--docs', './docs'])
+
+// Wait for ready
+await new Promise(resolve => setTimeout(resolve, 5000))
+
+// Submit tasks
+const response = await fetch('http://localhost:3070/api/task', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ task: 'Add examples to API docs' })
+})
+
+const { taskId } = await response.json()
+console.log('Task submitted:', taskId)
+```
+
+### Development and testing
+
+Run the server for development:
+
+```bash
+# Terminal 1: Start server
+docbot serve --docs ./docs --port 3070
+
+# Terminal 2: Test API
+curl http://localhost:3070/api/search?q=test
+```
+
+## Interactive vs non-interactive mode
+
+### Interactive mode (default)
+
+When `--interactive=true` (default):
+
+- Agent asks for plan approval before making changes
+- Tasks wait for human confirmation
+- Suitable for production use where you want control
+
+```bash
+docbot serve --docs ./docs --interactive=true
+```
+
+### Non-interactive mode
+
+When `--interactive=false`:
+
+- Agent executes tasks autonomously
+- No plan approval required
+- Faster execution but higher risk
+
+```bash
+docbot serve --docs ./docs --interactive=false
+```
+
+<Warning>
+Non-interactive mode allows Docbot to modify files without human approval. Only use this in trusted environments with proper version control.
+</Warning>
+
+## Configuration
+
+Set defaults in `docbot.config.jsonc`:
+
+```json
+{
+  "projectSlug": "my-project",
+  "paths": {
+    "docs": "./docs",
+    "codebase": ["./src"]
+  },
+  "server": {
+    "port": 3070
+  },
+  "qdrant": {
+    "url": "http://127.0.0.1:6333",
+    "collections": {
+      "docs": "my-project-docs",
+      "code": "my-project-code"
+    }
+  }
+}
+```
+
+Then simply run:
+
+```bash
+docbot serve
+```
+
+## Environment variables
+
+### Required
+
+- `AI_GATEWAY_API_KEY` - API key for the AI gateway (required for all agent operations)
+
+### Optional
+
+- `QDRANT_URL` - Override Qdrant URL (same as `--qdrant-url` flag)
+- `PORT` - Override server port (same as `--port` flag)
+
+```bash
+export AI_GATEWAY_API_KEY="your-key"
+export PORT=8080
+docbot serve --docs ./docs
+```
+
+## Running in Docker
+
+Create a Dockerfile:
+
+```dockerfile
+FROM oven/bun:1
+
+WORKDIR /app
+
+# Copy docs
+COPY docs ./docs
+COPY docbot.config.jsonc .
+
+# Install docbot
+RUN bun add @helmlabs/docbot
+
+# Expose port
+EXPOSE 3070
+
+# Run server
+CMD ["bunx", "@helmlabs/docbot", "serve"]
+```
+
+Build and run:
+
+```bash
+docker build -t docbot-server .
+docker run -d -p 3070:3070 \
+  -e AI_GATEWAY_API_KEY="your-key" \
+  docbot-server
+```
+
+## Monitoring
+
+### Health check
+
+The server doesn't expose a dedicated health endpoint yet, but you can check if it's responding:
+
+```bash
+curl http://localhost:3070/api/search?q=test&limit=1
+```
+
+A successful response means the server is healthy.
+
+### Logging
+
+Server logs go to stdout. Redirect to a file or logging service:
+
+```bash
+docbot serve --docs ./docs 2>&1 | tee docbot.log
+```
+
+Or with systemd:
+
+```bash
+journalctl -u docbot -f
+```
+
+## Troubleshooting
+
+### Error: AI_GATEWAY_API_KEY environment variable is required
+
+```bash
+error: AI_GATEWAY_API_KEY environment variable is required
+```
+
+Set your API key:
+
+```bash
+export AI_GATEWAY_API_KEY="your-key"
+docbot serve --docs ./docs
+```
+
+### Error: docs path is required
+
+```bash
+error: docs path is required (provide --docs or set paths.docs in config)
+```
+
+Either pass `--docs` or configure `paths.docs` in your config file.
+
+### Port already in use
+
+If the port is taken:
+
+```bash
+Error: listen EADDRINUSE :::3070
+```
+
+Use a different port:
+
+```bash
+docbot serve --docs ./docs --port 8080
+```
+
+### Connection errors
+
+If Qdrant isn't accessible:
+
+```bash
+Error: connect ECONNREFUSED 127.0.0.1:6333
+```
+
+Verify Qdrant is running:
+
+```bash
+curl http://127.0.0.1:6333/health
+```
+
+Start Qdrant if needed:
+
+```bash
+docker run -d --name docbot-qdrant -p 6333:6333 qdrant/qdrant
+```
+
+### Server not responding
+
+If the server starts but doesn't respond to requests:
+
+1. **Check firewall** - Ensure port 3070 is open
+2. **Verify indexing** - Run `docbot index` to create embeddings first
+3. **Check logs** - Look for errors in server output
+4. **Test locally** - Try `curl http://localhost:3070/api/search?q=test`
+
+## Graceful shutdown
+
+The server handles SIGTERM and SIGINT for graceful shutdown:
+
+```bash
+# Send SIGTERM
+kill -TERM <pid>
+
+# Or use Ctrl+C
+```
+
+In-progress tasks are allowed to complete (with a timeout).
+
+## Performance
+
+The server is lightweight and can handle:
+
+- **Concurrent searches** - 100+ queries/second
+- **Task execution** - 1-5 concurrent tasks (depends on AI gateway rate limits)
+- **WebSocket connections** - 50+ simultaneous clients
+
+Resource usage:
+
+- **Memory** - 50-200 MB (depends on index size)
+- **CPU** - Minimal when idle, spikes during task execution
+- **Network** - Depends on AI gateway latency
+
+## Next steps
+
+After starting the server:
+
+1. **Submit tasks** - Use the API to automate documentation work
+2. **Integrate search** - Add search to your docs site
+3. **Monitor usage** - Track API calls and task success rates
+4. **Scale up** - Run multiple instances behind a load balancer
+
+See the [Run command](/commands/run) for interactive task execution.
