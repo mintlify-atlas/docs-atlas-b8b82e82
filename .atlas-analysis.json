@@ -1,0 +1,108 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Docbot",
+  "projectDescription": "AI-powered CLI for analyzing, planning, and executing documentation improvements",
+  "theme": "aspen",
+  "primaryColor": "#2563eb",
+  "lightColor": "#3b82f6",
+  "darkColor": "#1d4ed8",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/how-it-works",
+              "concepts/workflow",
+              "concepts/agents"
+            ]
+          },
+          {
+            "group": "Commands",
+            "pages": [
+              "commands/init",
+              "commands/index",
+              "commands/run",
+              "commands/search",
+              "commands/serve"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/overview",
+              "configuration/models",
+              "configuration/qdrant"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/local-setup",
+              "guides/docker-qdrant",
+              "guides/custom-models",
+              "guides/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Configuration",
+            "pages": [
+              "api/config-schema",
+              "api/runtime-config"
+            ]
+          },
+          {
+            "group": "Agents",
+            "pages": [
+              "api/orchestrator",
+              "api/planner",
+              "api/research",
+              "api/writer"
+            ]
+          },
+          {
+            "group": "Tools",
+            "pages": [
+              "api/codebase-tools",
+              "api/docs-tools",
+              "api/blackboard"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Codebase-aware documentation analysis",
+    "Semantic and exact-match hybrid search",
+    "Interactive planning with approval workflow",
+    "Multi-agent orchestration system",
+    "MDX-first structured edits",
+    "Qdrant vector database integration",
+    "Terminal UI with log viewer",
+    "HTTP API server mode"
+  ],
+  "publicApiSurface": [
+    "docbot init",
+    "docbot index",
+    "docbot run <task>",
+    "docbot search <query>",
+    "docbot serve",
+    "@helmlabs/docbot/config"
+  ]
+}
